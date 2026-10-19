@@ -35,8 +35,6 @@ wp: # консоль сервиса
 	docker compose exec wp /bin/sh
 proxy: # консоль сервиса
 	docker compose exec proxy /bin/sh
-tg: # консоль сервиса
-	docker compose exec tg /bin/bash
 dnstt: # консоль сервиса
 	docker compose exec dnstt /bin/sh
 hy: # консоль сервиса
@@ -70,8 +68,6 @@ reset:
 	make u
 backup:
 	docker compose exec php php backup.php > backup.json
-mtproto:
-	docker compose exec php php mtproto.php
 cron: # установка задачи в cron для автозапуска при перезагрузке
 	@(crontab -l 2>/dev/null | grep -v "cd /root/vpnbot && make r"; echo "@reboot cd /root/vpnbot && make r") | crontab -
 uncron: # удаление задачи из cron

@@ -65,7 +65,6 @@ class Bot
         $this->ports = [
             'hy'    => '443/udp',
             'ss'    => '8388',
-            'tg'    => '443',
             'ad'    => '853',
             'dnstt' => '53/udp',
         ];
@@ -315,9 +314,6 @@ class Bot
             case preg_match('~^/adguardChBr$~', $this->input['callback'], $m):
                 $this->adguardChBr();
                 break;
-            case preg_match('~^/mtproto$~', $this->input['callback'], $m):
-                $this->mtproto();
-                break;
             case preg_match('~^/deleteAll (\w+)$~', $this->input['callback'], $m):
                 $this->deleteAll($m[1]);
                 break;
@@ -395,12 +391,6 @@ class Bot
                 break;
             case preg_match('~^/backup$~', $this->input['callback'], $m):
                 $this->backup();
-                break;
-            case preg_match('~^/generateSecret$~', $this->input['callback'], $m):
-                $this->generateSecret();
-                break;
-            case preg_match('~^/setSecret$~', $this->input['callback'], $m):
-                $this->setSecret();
                 break;
             case preg_match('~^/defaultDNS (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
                 $this->defaultDNS(...explode('_', $m['arg']));
@@ -574,9 +564,6 @@ class Bot
             case preg_match('~^/qrXray (\d+)(?:_(\d+))?$~', $this->input['callback'], $m):
                 $this->qrXray($m[1], $m[2] ?: false);
                 break;
-            case preg_match('~^/qrMtproto$~', $this->input['callback'], $m):
-                $this->qrMtproto();
-                break;
             case preg_match('~^/delupstream (\d+)$~', $this->input['callback'], $m):
                 $this->delupstream($m[1]);
                 break;
@@ -690,12 +677,6 @@ class Bot
                 break;
             case preg_match('~^/selfFakeDomain$~', $this->input['callback'], $m):
                 $this->selfFakeDomain();
-                break;
-            case preg_match('~^/changeTGDomain$~', $this->input['callback'], $m):
-                $this->changeTGDomain();
-                break;
-            case preg_match('~^/setTGAdtag$~', $this->input['callback'], $m):
-                $this->changeTGAdtag();
                 break;
             case preg_match('~^/include (\w+)$~', $this->input['callback'], $m):
                 $this->include($m[1]);
@@ -1929,9 +1910,6 @@ class Bot
                 'private' => file_get_contents('/config/dnstt/server.key'),
                 'public'  => file_get_contents('/config/dnstt/server.pub'),
             ] : false,
-            'mtproto'       => file_get_contents('/config/mtprotosecret'),
-            'mtprotodomain' => file_get_contents('/config/mtprotodomain'),
-            'mtprotoadtag'  => file_exists('/config/mtprotoadtag') ? file_get_contents('/config/mtprotoadtag') : '',
             'xray'          => $this->getXray(),
             'hy'            => yaml_parse_file('/config/hysteria.yaml'),
             'oc'            => file_get_contents('/config/ocserv.conf'),
@@ -2014,15 +1992,6 @@ class Bot
                 $this->ssh('pkill sslocal', 'proxy');
                 file_put_contents('/config/sslocal.json', json_encode($json['sl'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $this->ssh('sslocal -v -d -c /config.json', 'proxy');
-            }
-            // mtproto
-            if (!empty($json['mtproto'])) {
-                $out[] = 'update mtproto';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                file_put_contents('/config/mtprotosecret', $json['mtproto']);
-                file_put_contents('/config/mtprotodomain', $json['mtprotodomain'] ?: '');
-                file_put_contents('/config/mtprotoadtag', trim($json['mtprotoadtag'] ?? ''));
-                $this->restartTG();
             }
             // hwid
             if (array_key_exists('hwid', $json)) {
@@ -5108,7 +5077,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
                     $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
                     $this->i18n($this->ssh('pgrep hysteria', 'hy') ? 'on' : 'off') . ' ' . $this->i18n('hysteria'),
-                    $this->i18n($this->ssh('pgrep mtproto-proxy', 'tg') ? 'on' : 'off') . ' ' . $this->i18n('mtproto'),
                     $this->i18n(exec("JSON=1 timeout 2 dnslookup google.com ad") ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
                     $this->i18n($this->ssh('pgrep ssserver', 'ss') ? 'on' : 'off') . ' ' . $this->i18n('sh_title'),
                     $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt'),
@@ -5118,7 +5086,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
                     $this->i18n($ports['hy']['enable'] ? 'on' : 'off') . ($ports['hy']['enable'] ? ' ' . $ports['hy']['port'] : 'port unavailable'),
-                    $this->i18n($ports['tg']['enable'] ? 'on' : 'off') . ($ports['tg']['enable'] ? ' ' . $ports['tg']['port'] : 'port unavailable'),
                     $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port unavailable'),
                     $this->i18n($ports['ss']['enable'] ? 'on' : 'off') . ($ports['ss']['enable'] ? ' ' . $ports['ss']['port'] : 'port unavailable'),
                     $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port unavailable'),
@@ -5151,15 +5118,9 @@ DNS-over-HTTPS with IP:
                                 'text'          => $this->i18n('xray'),
                                 'callback_data' => "/xray",
                             ],
-                        ],
-                        [
                             [
                                 'text'          => $this->i18n('ocserv'),
                                 'callback_data' => "/menu oc",
-                            ],
-                            [
-                                'text'          => $this->i18n('mtproto'),
-                                'callback_data' => "/mtproto",
                             ],
                         ],
                         [
@@ -6347,11 +6308,9 @@ DNS-over-HTTPS with IP:
         $p = $this->getPorts();
         $t = str_replace([
             '~ip~',
-            '~tg~',
             '~ss~',
         ], [
             getenv('IP'),
-            $p['tg']['port'],
             $p['ss']['port'],
         ], $s);
         $this->sendFile($this->input['from'], new CURLStringFile($t, 'socat.sh', 'application/x-sh'));
@@ -9145,10 +9104,6 @@ DNS-over-HTTPS with IP:
         $c      = yaml_parse_file($f)['services'];
         $pac = $this->getPacConf();
         $data   = [
-            [[
-                'text'          => $this->i18n($c['tg'] ? 'on' : 'off') . ' ' . explode(':', $c['tg']['ports'][0])[0] . ' MTProto ',
-                'callback_data' => "/changePort tg",
-            ]],
             [[
                 'text'          => $this->i18n($c['ad'] ? 'on' : 'off') . ' 853 AdguardHome DoT',
                 'callback_data' => "/hidePort ad",
