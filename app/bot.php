@@ -64,8 +64,6 @@ class Bot
         ]) . '~';
         $this->ports = [
             'hy'    => '443/udp',
-            'wg'    => '51820/udp',
-            'wg1'   => '51820/udp',
             'ss'    => '8388',
             'tg'    => '443',
             'ad'    => '853',
@@ -1541,7 +1539,6 @@ class Bot
     {
         $period = 10;
         while (true) {
-            $this->shutdownClient();
             $this->shutdownClientXr();
             $this->checkVersion();
             $this->checkBackup();
@@ -1929,19 +1926,7 @@ class Bot
 
     public function export()
     {
-        $this->wg = 0;
-        $wg = [
-            'server'  => $this->readConfig(),
-            'clients' => json_decode(file_get_contents($this->clients), true) ?: [],
-        ];
-        $this->wg = 1;
-        $wg1 = [
-            'server'  => $this->readConfig(),
-            'clients' => json_decode(file_get_contents($this->clients1), true) ?: [],
-        ];
         $conf = [
-            'wg'  => $wg,
-            'wg1' => $wg1,
             'ad'  => yaml_parse_file($this->adguard),
             'pac' => $this->getPacConf(),
             'hwid' => file_exists($this->hwid) ? (json_decode(file_get_contents($this->hwid), true) ?: []) : [],
@@ -2017,24 +2002,7 @@ class Bot
                 $this->restartNaive();
                 $this->pacUpdate('1');
             }
-            // wg
-            if (!empty($json['wg'])) {
-                $out[] = 'update wireguard';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->wg = 0;
-                $this->saveClients($json['wg']['clients']);
-                $this->restartWG($this->createConfig($json['wg']['server']), $switch_amnezia);
-                $this->iptablesWG();
-            }
-            // wg1
-            if (!empty($json['wg1'])) {
-                $out[] = 'update wireguard 1';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->wg = 1;
-                $this->saveClients($json['wg1']['clients']);
-                $this->restartWG($this->createConfig($json['wg1']['server']), $switch_wg1amnezia);
-                $this->iptablesWG();
-            }
+            // wg, wg1: wireguard removed in lightweightbot, skipped on import
             // ad
             if (!empty($json['ad'])) {
                 $out[] = 'update adguard';
@@ -5156,8 +5124,6 @@ DNS-over-HTTPS with IP:
             $main[] = '<code>';
             $main[] = $this->alignColumns([
                 [
-                    $this->i18n($this->ssh(!empty($this->getPacConf()['amnezia']) ? 'awg' : 'wg', 'wg') ? 'on' : 'off') . ' ' . $this->i18n(!empty($this->getPacConf()['amnezia']) ? 'amnezia' : 'wg_title'),
-                    $this->i18n($this->ssh(!empty($this->getPacConf()['wg1_amnezia']) ? 'awg' : 'wg', 'wg1') ? 'on' : 'off') . ' ' . $this->i18n(!empty($this->getPacConf()['wg1_amnezia']) ? 'amnezia' : 'wg_title'),
                     $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
                     $this->i18n($this->ssh('pgrep caddy', 'np') ? 'on' : 'off') . ' ' . $this->i18n('naive'),
                     $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
@@ -5169,8 +5135,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n($this->warpStatus()) . ' ' . $this->i18n('warp'),
                 ],
                 [
-                    $this->i18n($ports['wg']['enable'] ? 'on' : 'off') . ($ports['wg']['enable'] ? ' ' . $ports['wg']['port'] : 'port unavailable'),
-                    $this->i18n($ports['wg1']['enable'] ? 'on' : 'off') . ($ports['wg1']['enable'] ? ' ' . $ports['wg1']['port'] : 'port unavailable'),
                     $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
@@ -5203,16 +5167,6 @@ DNS-over-HTTPS with IP:
                 'text' => implode("\n", $main ?: []),
                 'data' => array_merge(
                     [
-                        [
-                            [
-                                'text'          => $this->i18n(!empty($this->getPacConf()['amnezia']) ? 'amnezia' : 'wg_title'),
-                                'callback_data' => "/changeWG 0",
-                            ],
-                            [
-                                'text'          => $this->i18n(!empty($this->getPacConf()['wg1_amnezia']) ? 'amnezia' : 'wg_title'),
-                                'callback_data' => "/changeWG 1",
-                            ],
-                        ],
                         [
                             [
                                 'text'          => $this->i18n('xray'),
@@ -6421,14 +6375,10 @@ DNS-over-HTTPS with IP:
             '~ip~',
             '~tg~',
             '~ss~',
-            '~wg1~',
-            '~wg2~',
         ], [
             getenv('IP'),
             $p['tg']['port'],
             $p['ss']['port'],
-            $p['wg']['port'],
-            $p['wg1']['port'],
         ], $s);
         $this->sendFile($this->input['from'], new CURLStringFile($t, 'socat.sh', 'application/x-sh'));
     }
@@ -8407,6 +8357,7 @@ DNS-over-HTTPS with IP:
 
     public function getAwgClient($pk)
     {
+        return false; // wireguard removed in lightweightbot
         $c   = $this->getPacConf();
         $wg  = json_decode(file_get_contents($this->clients), true) ?: [];
         $wg1 = json_decode(file_get_contents($this->clients1), true) ?: [];
@@ -9222,14 +9173,6 @@ DNS-over-HTTPS with IP:
         $c      = yaml_parse_file($f)['services'];
         $pac = $this->getPacConf();
         $data   = [
-            [[
-                'text'          => $this->i18n($c['wg'] ? 'on' : 'off') . ' ' . explode(':', $c['wg']['ports'][0])[0] . ' Wireguard',
-                'callback_data' => "/changePort wg",
-            ]],
-            [[
-                'text'          => $this->i18n($c['wg1'] ? 'on' : 'off') . ' ' . explode(':', $c['wg1']['ports'][0])[0] . ' Wireguard',
-                'callback_data' => "/changePort wg1",
-            ]],
             [[
                 'text'          => $this->i18n($c['tg'] ? 'on' : 'off') . ' ' . explode(':', $c['tg']['ports'][0])[0] . ' MTProto ',
                 'callback_data' => "/changePort tg",

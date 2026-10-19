@@ -23,10 +23,6 @@ l: # логи из контейнеров
 	docker compose logs
 php: # консоль сервиса
 	docker compose exec php /bin/sh
-wg: # консоль сервиса
-	docker compose exec wg /bin/sh
-wg1: # консоль сервиса
-	docker compose exec wg1 /bin/sh
 ss: # консоль сервиса
 	docker compose exec ss /bin/sh
 ng: # консоль сервиса
