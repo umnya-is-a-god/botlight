@@ -467,7 +467,7 @@ class Bot
             case preg_match('~^/download (\d+)$~', $this->input['callback'], $m):
                 $this->downloadPeer($m[1]);
                 break;
-            case preg_match('~^/dw (\w+) (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/dw (\w+) (si|cl)$~', $this->input['callback'], $m):
                 $this->dw($m[1], $m[2]);
                 break;
             case preg_match('~^/deloc (\d+)$~', $this->input['callback'], $m):
@@ -479,7 +479,7 @@ class Bot
             case preg_match('~^/choiceTemplate (.+)$~', $this->input['callback'], $m):
                 $this->choiceTemplate($m[1]);
                 break;
-            case preg_match('~^/templateUser (\w+) (\d+)$~', $this->input['callback'], $m):
+            case preg_match('~^/templateUser (sing|clash) (\d+)$~', $this->input['callback'], $m):
                 $this->templateUser($m[1], $m[2]);
                 break;
             case preg_match('~^/timerXr (\d+)$~', $this->input['callback'], $m):
@@ -612,25 +612,25 @@ class Bot
             case preg_match('~^/xtlsrulesset(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->xtlsrulesset($m[1] ?: 0);
                 break;
-            case preg_match('~^/templateCopy (\w+)(?: (.+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/templateCopy (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->templateCopy($m[1], $m[2]);
                 break;
-            case preg_match('~^/delTemplate (\w+)(?: (.+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/delTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->delTemplate($m[1], $m[2]);
                 break;
             case preg_match('~^/downloadOrigin (\w+)$~', $this->input['callback'], $m):
                 $this->downloadOrigin($m[1]);
                 break;
-            case preg_match('~^/downloadTemplate (\w+)(?: (.+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/downloadTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->downloadTemplate($m[1], $m[2]);
                 break;
-            case preg_match('~^/defaultTemplate (\w+)(?: (.+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/defaultTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->defaultTemplate($m[1], $m[2]);
                 break;
-            case preg_match('~^/templates (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/templates (sing|clash)$~', $this->input['callback'], $m):
                 $this->templates($m[1]);
                 break;
-            case preg_match('~^/templateAdd (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/templateAdd (sing|clash)$~', $this->input['callback'], $m):
                 $this->templateAdd($m[1]);
                 break;
             case preg_match('~^/changeFakeDomain$~', $this->input['callback'], $m):
@@ -2001,7 +2001,7 @@ class Bot
         $_GET['t']              = $t;
         $_SERVER['SERVER_NAME'] = $this->getDomain($pac['transport'] != 'Reality');
         $conf                   = $this->subscription(1);
-        $this->sendFile($this->input['from'], new CURLStringFile($conf, $c['email'] . ($t == 'cl' ? '_mihomo.yaml' :($t == 'si' ? '_singbox.json' : '_v2ray.json'))));
+        $this->sendFile($this->input['from'], new CURLStringFile($conf, $c['email'] . ($t == 'cl' ? '_mihomo.yaml' :'_singbox.json')));
     }
 
     public function downloadPeer($client)
@@ -5814,15 +5814,8 @@ DNS-over-HTTPS with IP:
             't' => 'si',
             's' => $c['inbounds'][0]['settings']['clients'][$i]['id'],
         ]));
-        $v2     = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 's',
-            's' => $c['inbounds'][0]['settings']['clients'][$i]['id'],
-        ]));
 
         switch ($s) {
-            case 1:
-                return "v2rayng://install-config?url=$v2#{$c['inbounds'][0]['settings']['clients'][$i]['id']}";
             case 2:
                 return "sing-box://import-remote-profile/?url={$si}#{$c['inbounds'][0]['settings']['clients'][$i]['email']}";
 
@@ -6619,10 +6612,6 @@ DNS-over-HTTPS with IP:
         }
         $data[] = [
             [
-                'text'          => $this->i18n('v2ray templates'),
-                'callback_data' => "/templates v2ray",
-            ],
-            [
                 'text'          => $this->i18n('sing-box templates'),
                 'callback_data' => "/templates sing",
             ],
@@ -7120,9 +7109,7 @@ DNS-over-HTTPS with IP:
         }
         $text[] = "<pre><code>{$this->linkXray($i)}</code></pre>\n";
 
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=s&r=v&s={$c['id']}#{$c['email']}'>import://v2rayng</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#{$c['email']}'>import://sing-box</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=s&r=st&s={$c['id']}#{$c['email']}'>import://streisand</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=h&s={$c['id']}#{$c['email']}'>import://hiddify</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=k&s={$c['id']}#{$c['email']}'>import://karing</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#{$c['email']}'>import://mihomo</a>";
@@ -7133,19 +7120,13 @@ DNS-over-HTTPS with IP:
             't' => 'si',
             's' => $c['id'],
         ]));
-        $xr = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 's',
-            's' => $c['id'],
-        ]));
         $cl = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
             't' => 'cl',
             's' => $c['id'],
         ]));
 
-        $text[] = "\nxray config: <pre><code>$xr</code></pre>";
-        $text[] = "sing-box config: <pre><code>$si</code></pre>";
+        $text[] = "\nsing-box config: <pre><code>$si</code></pre>";
         $text[] = "mihomo config: <pre><code>$cl</code></pre>";
 
         $text[]   = "sing-box windows: <a href='$scheme://{$domain}/pac$hash?t=si&r=w&s={$c['id']}'>windows service</a>";
@@ -7160,10 +7141,6 @@ DNS-over-HTTPS with IP:
         ];
         $data[] = [
             [
-                'text'    => $this->i18n('v2ray'),
-                'web_app' => ['url' => "https://{$domain}/pac$hash?t=s&s={$c['id']}"]
-            ],
-            [
                 'text'    => $this->i18n('singbox'),
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=si&s={$c['id']}"]
             ],
@@ -7173,10 +7150,6 @@ DNS-over-HTTPS with IP:
             ],
         ];
         $data[] = [
-            [
-                'text'    => $this->i18n('v2ray ⬇️'),
-                'callback_data' => "/dw {$i} s",
-            ],
             [
                 'text'    => $this->i18n('singbox ⬇️'),
                 'callback_data' => "/dw {$i} si",
@@ -7197,13 +7170,8 @@ DNS-over-HTTPS with IP:
             ],
         ];
         $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : 'default(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : 'origin') . ')';
-        $v2raytemplate = $c['v2raytemplate'] ? base64_decode($c['v2raytemplate']) : 'default(' . ($pac['defaultv2raytemplate'] && !empty($pac['v2raytemplates'][base64_decode($pac['defaultv2raytemplate'])]) ? base64_decode($pac['defaultv2raytemplate']) : 'origin') . ')';
         $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : 'default(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : 'origin') . ')';
         $data[]        = [
-            [
-                'text'          => $this->i18n('v2ray') . ": $v2raytemplate",
-                'callback_data' => "/templateUser v2ray $i",
-            ],
             [
                 'text'          => $this->i18n('singbox') . ": $singtemplate",
                 'callback_data' => "/templateUser sing $i",
@@ -7217,10 +7185,6 @@ DNS-over-HTTPS with IP:
             [
                 'text'          => $this->i18n('qr short'),
                 'callback_data' => "/qrXray $i",
-            ],
-            [
-                'text'          => $this->i18n('qr v2ray'),
-                'callback_data' => "/qrXray {$i}_1",
             ],
             [
                 'text'          => $this->i18n('qr singbox'),
@@ -7290,11 +7254,6 @@ DNS-over-HTTPS with IP:
             't' => 'si',
             's' => $uid,
         ]));
-        $xray = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 's',
-            's' => $uid,
-        ]));
         $clash = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
             't' => 'cl',
@@ -7304,7 +7263,6 @@ DNS-over-HTTPS with IP:
         $windows = "$scheme://{$domain}/pac$hash?t=si&r=w&s=$uid";
         $_GET['s'] = $uid;
         foreach ([
-          'xray'    => 's',
           'singbox' => 'si',
           'clash'   => 'cl'
         ] as $k     => $v) {
@@ -7317,15 +7275,15 @@ DNS-over-HTTPS with IP:
     public function subscription($return = false)
     {
         switch ($_GET['t']) {
-            case 's':
-                $type = 'v2ray';
-                break;
             case 'si':
                 $type = 'sing';
                 break;
             case 'cl':
                 $type = 'clash';
                 break;
+            default:
+                header('404', true, 404);
+                exit;
         }
         $pac    = $this->getPacConf();
         $domain = $_GET['cdn'] ?: ($_SERVER['SERVER_NAME'] ?: $this->getDomain($pac['transport'] != 'Reality'));
@@ -7358,11 +7316,6 @@ DNS-over-HTTPS with IP:
                 't' => 'si',
                 's' => $uid,
             ]));
-            $v2 = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-                'h' => $hash,
-                't' => 's',
-                's' => $uid,
-            ]));
             $cl = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
                 'h' => $hash,
                 't' => 'cl',
@@ -7371,12 +7324,6 @@ DNS-over-HTTPS with IP:
             switch ($_GET['r']) {
                 case 'si':
                     header("Location: sing-box://import-remote-profile/?url=$si");
-                    exit;
-                case 'st':
-                    header("Location: streisand://import/$v2");
-                    exit;
-                case 'v':
-                    header("Location: v2rayng://install-config?url=$v2");
                     exit;
                 case 'k':
                     header("Location: karing://install-config?url=$si");
@@ -7440,87 +7387,6 @@ DNS-over-HTTPS with IP:
         }
 
         switch ($_GET['t']) {
-            case 's':
-                $c['outbounds'][$index]['settings']['vnext'][0]['address']  = '~domain~';
-                $c['outbounds'][$index]['settings']['vnext'][0]['users'][0] = [
-                    'id'         => '~uid~',
-                    'encryption' => 'none',
-                ];
-                $fingerprint = $c['outbounds'][$index]['streamSettings']['realitySettings']['fingerprint'] ?? $c['outbounds'][$index]['streamSettings']['tlsSettings']['fingerprint'] ?? 'chrome';
-                switch ($pac['transport']) {
-                    case 'Reality':
-                        $c['outbounds'][$index]['settings']['vnext'][0]['users'][0]["flow"] = "xtls-rprx-vision";
-                        $c['outbounds'][$index]['streamSettings']                           = [
-                            "network"         => "tcp",
-                            "security"        => "reality",
-                            "realitySettings" => [
-                                "serverName"  => '~server_name~',
-                                "fingerprint" => $fingerprint,
-                                "publicKey"   => '~public_key~',
-                                "shortId"     => '~short_id~',
-                            ]
-                        ];
-                        $c['outbounds'][$index]['mux'] = [
-                            "enabled"     => false,
-                            "concurrency" => -1
-                        ];
-                        break;
-                    case 'xhttp':
-                        $c['outbounds'][$index]['streamSettings'] = [
-                            "network"  => "xhttp",
-                            "security" => "tls",
-
-                            "xhttpSettings" => [
-                                "host" => "~domain~",
-                                "mode" => "packet-up",
-                                "path" => "/ws$hash",
-
-                                "extra" => [
-                                    "scMaxEachPostBytes"    => 1000000,
-                                    "scMinPostsIntervalMs"  => 30,
-                                    "scStreamUpServerSecs"  => "20-80",
-                                    "xmux" => [
-                                        "cMaxReuseTimes"    => 0,
-                                        "hKeepAlivePeriod"  => 0,
-                                        "hMaxRequestTimes"  => "600-900",
-                                        "hMaxReusableSecs"  => "1800-3000",
-                                        "maxConcurrency"    => "16-32",
-                                        "maxConnections"    => 0,
-                                    ],
-                                    "xPaddingBytes" => "100-1000",
-                                    "noGRPCHeader"  => false
-                                ]
-                            ],
-
-                            "tlsSettings" => [
-                                "allowInsecure" => false,
-                                "alpn"          => ["h2", "http/1.1"],
-                                "fingerprint"   => "chrome",
-                                "serverName"    => "~domain~",
-                                "show"          => false
-                            ]
-                        ];
-                        unset($c['outbounds'][$index]['mux']);
-                        break;
-
-                    default:
-                        $c['outbounds'][$index]['streamSettings'] = [
-                            "network"    => "ws",
-                            "security"   => "tls",
-                            "wsSettings" => [
-                                "path" => "/ws$hash?ed=2560"
-                            ],
-                            "tlsSettings" => [
-                                "allowInsecure" => false,
-                                "serverName"    => '~domain~',
-                                "fingerprint"   => $fingerprint
-                            ]
-                        ];
-                        unset($c['outbounds'][$index]['mux']);
-                        break;
-                }
-
-                break;
             case 'si':
                 $c['outbounds'][$index]['uuid'] = '~uid~';
                 switch ($pac['transport']) {
@@ -7691,51 +7557,6 @@ DNS-over-HTTPS with IP:
         ]), true);
 
         switch ($_GET['t']) {
-            case 's':
-                if (!empty($c['routing']['rules'])) {
-                    $ips = $domains = [];
-                    foreach ($c['routing']['rules'] as $k => $v) {
-                        if (array_key_exists('domain', $v) && !empty($v['domain'])) {
-                            foreach ($v['domain'] as $j) {
-                                if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $j)) {
-                                    $domains[$v['outboundTag']][] = $j;
-                                } else {
-                                    $ips[$v['outboundTag']][] = $j;
-                                }
-                            }
-                        }
-                        if (array_key_exists('ip', $v) && !empty($v['ip'])) {
-                            foreach ($v['domain'] as $j) {
-                                if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $j)) {
-                                    $domains[$v['outboundTag']][] = $j;
-                                } else {
-                                    $ips[$v['outboundTag']][] = $j;
-                                }
-                            }
-                        }
-                    }
-                    $c['routing']['rules'] = [];
-
-                    if (!empty($domains)) {
-                        foreach ($domains as $k => $v) {
-                            $c['routing']['rules'][] = [
-                                "type"        => "field",
-                                "outboundTag" => $k,
-                                "domain"      => $v
-                            ];
-                        }
-                    }
-                    if (!empty($ips)) {
-                        foreach ($ips as $k => $v) {
-                            $c['routing']['rules'][] = [
-                                "type"        => "field",
-                                "outboundTag" => $k,
-                                "ip"          => $v
-                            ];
-                        }
-                    }
-                }
-                break;
             case 'si':
                 $c['route'] = $this->addRuleSet($c['route']);
                 $c['route'] = $this->createRuleSet($c['route'], $uid, $domain);
