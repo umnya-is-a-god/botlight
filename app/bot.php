@@ -7461,10 +7461,9 @@ DNS-over-HTTPS with IP:
                             'x-padding-bytes'        => '100-1000',
                             'sc-max-each-post-bytes' => 1000000,
                             'reuse-settings'         => [
-                                'max-connections'   => '0',
-                                'max-concurrency'   => '8-16',
-                                'c-max-reuse-times' => '0',
-                                'h-max-request-times' => '100-200',
+                                'max-concurrency'     => '16-32',
+                                'c-max-reuse-times'   => '0',
+                                'h-max-request-times' => '600-900',
                                 'h-max-reusable-secs' => '1800-3000',
                             ],
                         ];
