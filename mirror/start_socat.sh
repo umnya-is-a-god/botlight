@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Параметры (можно менять)
-PORTS=(80 443 853 ~ss~)          # Прослушиваемые порты
+PORTS=(80 443 853)          # Прослушиваемые порты
 TARGET="~ip~"               # Куда перенаправляем трафик
 TCP_CMD="socat TCP-LISTEN:{PORT},fork,reuseaddr TCP:$TARGET:{PORT}"
 UDP_CMD="socat UDP-LISTEN:{PORT},fork,reuseaddr UDP:$TARGET:{PORT}"

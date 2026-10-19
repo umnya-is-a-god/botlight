@@ -64,7 +64,6 @@ class Bot
         ]) . '~';
         $this->ports = [
             'hy'    => '443/udp',
-            'ss'    => '8388',
             'ad'    => '853',
             'dnstt' => '53/udp',
         ];
@@ -167,7 +166,7 @@ class Bot
             case preg_match('~^/menu (?P<type>addpeer) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>wg) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>client) (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-            case preg_match('~^/menu (?P<type>pac|adguard|config|ss|lang|oc|mirror|update|hy)$~', $this->input['callback'], $m):
+            case preg_match('~^/menu (?P<type>pac|adguard|config|lang|oc|mirror|update|hy)$~', $this->input['callback'], $m):
                 $this->menu(type: $m['type'] ?? false, arg: $m['arg'] ?? false);
                 break;
             case preg_match('~^/changeWG (\d+)$~', $this->input['callback'], $m):
@@ -425,9 +424,6 @@ class Bot
             case preg_match('~^/selfssl$~', $this->input['callback'], $m):
                 $this->selfssl();
                 break;
-            case preg_match('~^/sspswd$~', $this->input['callback'], $m):
-                $this->sspswd();
-                break;
             case preg_match('~^/changeCamouflage$~', $this->input['callback'], $m):
                 $this->changeCamouflage();
                 break;
@@ -460,9 +456,6 @@ class Bot
                 break;
             case preg_match('~^/resetXrStats$~', $this->input['callback'], $m):
                 $this->resetXrStats();
-                break;
-            case preg_match('~^/v2ray$~', $this->input['callback'], $m):
-                $this->v2ray();
                 break;
             case preg_match('~^/checkdns$~', $this->input['callback'], $m):
                 $this->checkdns();
@@ -557,9 +550,6 @@ class Bot
                 break;
             case preg_match('~^/qr (\d+)$~', $this->input['callback'], $m):
                 $this->qrPeer($m[1]);
-                break;
-            case preg_match('~^/qrSS$~', $this->input['callback'], $m):
-                $this->qrSS();
                 break;
             case preg_match('~^/qrXray (\d+)(?:_(\d+))?$~', $this->input['callback'], $m):
                 $this->qrXray($m[1], $m[2] ?: false);
@@ -1914,8 +1904,6 @@ class Bot
             'hy'            => yaml_parse_file('/config/hysteria.yaml'),
             'oc'            => file_get_contents('/config/ocserv.conf'),
             'ocu'           => file_get_contents('/config/ocserv.passwd'),
-            'ss'            => $this->getSSConfig(),
-            'sl'            => $this->getSSLocalConfig(),
             'xraystats'     => $this->getXrayStats(),
         ];
         return json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -1976,22 +1964,6 @@ class Bot
                 $this->stopAd();
                 yaml_emit_file($this->adguard, $json['ad']);
                 $this->startAd();
-            }
-            // ss
-            if (!empty($json['ss'])) {
-                $out[] = 'update shadowsocks server';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->ssh('pkill ssserver', 'ss');
-                file_put_contents('/config/ssserver.json', json_encode($json['ss'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                $this->ssh('ssserver -v -d -c /config.json', 'ss');
-            }
-            // sl
-            if (!empty($json['sl'])) {
-                $out[] = 'update shadowsocks proxy';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->ssh('pkill sslocal', 'proxy');
-                file_put_contents('/config/sslocal.json', json_encode($json['sl'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                $this->ssh('sslocal -v -d -c /config.json', 'proxy');
             }
             // hwid
             if (array_key_exists('hwid', $json)) {
@@ -4243,10 +4215,6 @@ DNS-over-HTTPS with IP:
                 'text' => "Reverse PAC",
                 'url'  => "$scheme://$ip/pac$hash&t=rpac",
             ];
-            $urls[1][] = [
-                'text' => "Reverse PAC Wireguard proxy",
-                'url'  => "$scheme://$ip/pac$hash&t=rpac&a=10.10.0.3",
-            ];
         }
         if ($rmpac) {
             $rmpac['time']  = date('d.m.Y H:i:s', $rmpac['mtime']);
@@ -4263,7 +4231,7 @@ DNS-over-HTTPS with IP:
             ];
         }
         if ($urls) {
-            $data = $urls;
+            $data = array_values($urls);
         }
         $data[] = [
             [
@@ -5078,7 +5046,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
                     $this->i18n($this->ssh('pgrep hysteria', 'hy') ? 'on' : 'off') . ' ' . $this->i18n('hysteria'),
                     $this->i18n(exec("JSON=1 timeout 2 dnslookup google.com ad") ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
-                    $this->i18n($this->ssh('pgrep ssserver', 'ss') ? 'on' : 'off') . ' ' . $this->i18n('sh_title'),
                     $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt'),
                     $this->i18n($this->warpStatus()) . ' ' . $this->i18n('warp'),
                 ],
@@ -5087,7 +5054,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n('on') . ' 443',
                     $this->i18n($ports['hy']['enable'] ? 'on' : 'off') . ($ports['hy']['enable'] ? ' ' . $ports['hy']['port'] : 'port unavailable'),
                     $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port unavailable'),
-                    $this->i18n($ports['ss']['enable'] ? 'on' : 'off') . ($ports['ss']['enable'] ? ' ' . $ports['ss']['port'] : 'port unavailable'),
                     $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port unavailable'),
                     '',
                 ],
@@ -5135,10 +5101,6 @@ DNS-over-HTTPS with IP:
                         ],
                         [
                             [
-                                'text'          => $this->i18n('sh_title'),
-                                'callback_data' => "/menu ss",
-                            ],
-                            [
                                 'text'          => $this->i18n('pac'),
                                 'callback_data' => "/pacMenu 0",
                             ],
@@ -5184,7 +5146,6 @@ DNS-over-HTTPS with IP:
             'pac'          => $type == 'pac'     ? $this->pacMenu((int) $arg)              : false,
             'adguard'      => $type == 'adguard' ? $this->adguardMenu()                    : false,
             'config'       => $type == 'config'  ? $this->configMenu()                     : false,
-            'ss'           => $type == 'ss'      ? $this->menuSS()                         : false,
             'lang'         => $type == 'lang'    ? $this->menuLang()                       : false,
             'oc'           => $type == 'oc'      ? $this->ocMenu()                         : false,
             'hy'           => $type == 'hy'      ? $this->hysteriaMenu()                   : false,
@@ -6308,10 +6269,8 @@ DNS-over-HTTPS with IP:
         $p = $this->getPorts();
         $t = str_replace([
             '~ip~',
-            '~ss~',
         ], [
             getenv('IP'),
-            $p['ss']['port'],
         ], $s);
         $this->sendFile($this->input['from'], new CURLStringFile($t, 'socat.sh', 'application/x-sh'));
     }
@@ -9107,10 +9066,6 @@ DNS-over-HTTPS with IP:
             [[
                 'text'          => $this->i18n($c['ad'] ? 'on' : 'off') . ' 853 AdguardHome DoT',
                 'callback_data' => "/hidePort ad",
-            ]],
-            [[
-                'text'          => $this->i18n($c['ss'] ? 'on' : 'off') . ' ' .  explode(':', $c['ss']['ports'][0])[0] . ' Shadowsocks',
-                'callback_data' => "/changePort ss",
             ]],
             [[
                 'text'          => $this->i18n($c['dnstt'] ? 'on' : 'off') . ' 53 dnstt',

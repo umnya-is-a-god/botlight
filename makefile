@@ -23,8 +23,6 @@ l: # логи из контейнеров
 	docker compose logs
 php: # консоль сервиса
 	docker compose exec php /bin/sh
-ss: # консоль сервиса
-	docker compose exec ss /bin/sh
 ng: # консоль сервиса
 	docker compose exec ng /bin/sh
 up: # консоль сервиса
@@ -33,8 +31,6 @@ ad: # консоль сервиса
 	docker compose exec ad /bin/sh
 wp: # консоль сервиса
 	docker compose exec wp /bin/sh
-proxy: # консоль сервиса
-	docker compose exec proxy /bin/sh
 dnstt: # консоль сервиса
 	docker compose exec dnstt /bin/sh
 hy: # консоль сервиса
