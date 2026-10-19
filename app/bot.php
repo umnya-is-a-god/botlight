@@ -7110,8 +7110,6 @@ DNS-over-HTTPS with IP:
         $text[] = "<pre><code>{$this->linkXray($i)}</code></pre>\n";
 
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#{$c['email']}'>import://sing-box</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=h&s={$c['id']}#{$c['email']}'>import://hiddify</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=k&s={$c['id']}#{$c['email']}'>import://karing</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#{$c['email']}'>import://mihomo</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=rh&s={$c['id']}#{$c['email']}'>import://rabbit-hole</a>";
 
@@ -7324,12 +7322,6 @@ DNS-over-HTTPS with IP:
             switch ($_GET['r']) {
                 case 'si':
                     header("Location: sing-box://import-remote-profile/?url=$si");
-                    exit;
-                case 'k':
-                    header("Location: karing://install-config?url=$si");
-                    exit;
-                case 'h':
-                    header("Location: hiddify://install-config/?url=$si");
                     exit;
                 case 'c':
                     header("Location: clash://install-config/?url=$cl&overwrite=no&name=$email");
