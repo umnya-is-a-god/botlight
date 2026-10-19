@@ -7400,11 +7400,10 @@ DNS-over-HTTPS with IP:
                             "path" => "/ws$hash",  // ← путь WS + hash
                             "xmux" => [
                                 "max_concurrency"   => "16-32",
-                                "max_connections"   => "0-1",
-                                "c_max_reuse_times" => "0-1",
+                                "c_max_reuse_times" => "0",
                                 "h_max_request_times" => "600-900",
                                 "h_max_reusable_secs" => "1800-3000",
-                                "h_keep_alive_period" => 60
+                                "h_keep_alive_period" => 0
                             ]
                         ];
 
