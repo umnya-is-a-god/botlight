@@ -28,6 +28,5 @@ $bot->dnsttStart();
 $bot->restartHysteria();
 $c = $bot->getPacConf();
 $bot->setUpstreamDomain($c['transport'] != 'Reality' ? 't' : $c['reality']['domain']);
-$bot->setUpstreamDomainNaive($c['domain']);
 $bot->setUpstreamDomainOcserv($c['domain']);
 $bot->xrayUpdateRules();

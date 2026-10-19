@@ -168,7 +168,7 @@ class Bot
             case preg_match('~^/menu (?P<type>addpeer) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>wg) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>client) (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-            case preg_match('~^/menu (?P<type>pac|adguard|config|ss|lang|oc|naive|mirror|update|hy)$~', $this->input['callback'], $m):
+            case preg_match('~^/menu (?P<type>pac|adguard|config|ss|lang|oc|mirror|update|hy)$~', $this->input['callback'], $m):
                 $this->menu(type: $m['type'] ?? false, arg: $m['arg'] ?? false);
                 break;
             case preg_match('~^/changeWG (\d+)$~', $this->input['callback'], $m):
@@ -446,15 +446,6 @@ class Bot
                 break;
             case preg_match('~^/changeOcPass$~', $this->input['callback'], $m):
                 $this->changeOcPass();
-                break;
-            case preg_match('~^/changeNaiveUser$~', $this->input['callback'], $m):
-                $this->changeNaiveUser();
-                break;
-            case preg_match('~^/changeNaiveSubdomain$~', $this->input['callback'], $m):
-                $this->changeNaiveSubdomain();
-                break;
-            case preg_match('~^/changeNaivePass$~', $this->input['callback'], $m):
-                $this->changeNaivePass();
                 break;
             case preg_match('~^/changeHysteriaPass$~', $this->input['callback'], $m):
                 $this->changeHysteriaPass();
@@ -1997,9 +1988,6 @@ class Bot
                     $switch_wg1amnezia = 1;
                 }
                 $this->setPacConf($json['pac']);
-                $out[] = 'update naiveproxy';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->restartNaive();
                 $this->pacUpdate('1');
             }
             // wg, wg1: wireguard removed in lightweightbot, skipped on import
@@ -2073,7 +2061,6 @@ class Bot
             }
             if (!empty($json['pac']['domain'])) {
                 $this->setUpstreamDomainOcserv($json['pac']['domain']);
-                $this->setUpstreamDomainNaive($json['pac']['domain']);
             }
             // dnstt
             if (!empty($json['dnstt'])) {
@@ -2433,7 +2420,6 @@ class Bot
             $this->setPacConf($conf);
             $this->chocdomain($domain);
             $this->setUpstreamDomainOcserv($domain);
-            $this->setUpstreamDomainNaive($domain);
             $this->cloakNginx();
         }
         if (empty($nomenu)) {
@@ -2514,8 +2500,7 @@ class Bot
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 $adguardClient = $conf['adguardkey'] ? "-d {$conf['adguardkey']}.{$conf['domain']}" : '';
                 $oc = $this->getHashSubdomain('oc');
-                $np = $this->getHashSubdomain('np');
-                exec("certbot certonly --force-renew --preferred-chain 'ISRG Root X1' -n --agree-tos --email mail@{$conf['domain']} -d {$conf['domain']}" . ($oc ? " -d $oc.{$conf['domain']}" : '') . ($np ? " -d $np.{$conf['domain']}" : '') . " $adguardClient --webroot -w /certs/ --logs-dir /logs --max-log-backups 0 2>&1", $out, $code);
+                exec("certbot certonly --force-renew --preferred-chain 'ISRG Root X1' -n --agree-tos --email mail@{$conf['domain']} -d {$conf['domain']}" . ($oc ? " -d $oc.{$conf['domain']}" : '') . " $adguardClient --webroot -w /certs/ --logs-dir /logs --max-log-backups 0 2>&1", $out, $code);
                 if ($code > 0) {
                     $this->send($this->input['chat'], "ERROR\n" . implode("\n", $out));
                     break;
@@ -5094,7 +5079,6 @@ DNS-over-HTTPS with IP:
             if (!empty($conf['domain'])) {
                 $main[] = '';
                 $oc     = $this->getHashSubdomain('oc');
-                $np     = $this->getHashSubdomain('np');
                 if (!empty($conf['domain'])) {
                     $ssl_expiry = $this->expireCert();
                     $certs      = $this->domainsCert() ?: [];
@@ -5102,9 +5086,6 @@ DNS-over-HTTPS with IP:
                     $main[] = "<blockquote>";
                     $main[] = "Domains:";
                     $main[] = $conf['domain'] . (in_array($conf['domain'], $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-                    if (!empty($np)) {
-                        $main[] = 'naive ' . "$np.{$conf['domain']}" . (in_array("$np.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-                    }
                     if (!empty($oc)) {
                         $main[] = 'openconnect ' . "$oc.{$conf['domain']}" . (in_array("$oc.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
                     }
@@ -5125,7 +5106,6 @@ DNS-over-HTTPS with IP:
             $main[] = $this->alignColumns([
                 [
                     $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
-                    $this->i18n($this->ssh('pgrep caddy', 'np') ? 'on' : 'off') . ' ' . $this->i18n('naive'),
                     $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
                     $this->i18n($this->ssh('pgrep hysteria', 'hy') ? 'on' : 'off') . ' ' . $this->i18n('hysteria'),
                     $this->i18n($this->ssh('pgrep mtproto-proxy', 'tg') ? 'on' : 'off') . ' ' . $this->i18n('mtproto'),
@@ -5135,7 +5115,6 @@ DNS-over-HTTPS with IP:
                     $this->i18n($this->warpStatus()) . ' ' . $this->i18n('warp'),
                 ],
                 [
-                    $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
                     $this->i18n($ports['hy']['enable'] ? 'on' : 'off') . ($ports['hy']['enable'] ? ' ' . $ports['hy']['port'] : 'port unavailable'),
@@ -5171,10 +5150,6 @@ DNS-over-HTTPS with IP:
                             [
                                 'text'          => $this->i18n('xray'),
                                 'callback_data' => "/xray",
-                            ],
-                            [
-                                'text'          => $this->i18n('naive'),
-                                'callback_data' => "/menu naive",
                             ],
                         ],
                         [
@@ -5251,7 +5226,6 @@ DNS-over-HTTPS with IP:
             'ss'           => $type == 'ss'      ? $this->menuSS()                         : false,
             'lang'         => $type == 'lang'    ? $this->menuLang()                       : false,
             'oc'           => $type == 'oc'      ? $this->ocMenu()                         : false,
-            'naive'        => $type == 'naive'   ? $this->naiveMenu()                      : false,
             'hy'           => $type == 'hy'      ? $this->hysteriaMenu()                   : false,
             'mirror'       => $type == 'mirror'  ? $this->mirrorMenu()                     : false,
             'update'       => $type == 'update'  ? $this->updatebot()                      : false,
@@ -9005,7 +8979,6 @@ DNS-over-HTTPS with IP:
     {
         $conf = $this->getPacConf();
         $oc   = $this->getHashSubdomain('oc');
-        $np   = $this->getHashSubdomain('np');
         if (!empty($conf['domain'])) {
             $ssl_expiry = $this->expireCert();
             $certs      = $this->domainsCert() ?: [];
@@ -9013,7 +8986,6 @@ DNS-over-HTTPS with IP:
             $text[] = "<blockquote>";
             $text[] = "Domains:";
             $text[] = $conf['domain'] . (in_array($conf['domain'], $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-            $text[] = 'naive ' . "$np.{$conf['domain']}" . (in_array("$np.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
             $text[] = 'openconnect ' . "$oc.{$conf['domain']}" . (in_array("$oc.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
             if (!empty($conf['adguardkey'])) {
                 $text[] = "{$conf['adguardkey']}.{$conf['domain']}" . (in_array("{$conf['adguardkey']}.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '') . ' adguard DOT';
