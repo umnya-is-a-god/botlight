@@ -2,7 +2,7 @@
 pwd=`pwd`
 TELEGRAM_API=$(grep -m1 '^TELEGRAM_API=' "$pwd/.env" 2>/dev/null | cut -d'=' -f2-)
 TELEGRAM_API=${TELEGRAM_API:-api.telegram.org}
-process_name="$pwd/update/update.sh"
+process_name="$pwd/scripts/update.sh"
 current_pid=$$
 pids=$(pgrep -f $process_name)
 for pid in $pids; do
@@ -12,7 +12,8 @@ for pid in $pids; do
 done
 
 > $pwd/update/pipe
-echo "$$" > $pwd/update/update_pid
+# pid lives outside ./update: that folder is writable from the containers
+echo "$$" > $pwd/.update_pid
 last_fetch=0
 
 tg_draft() {
@@ -34,7 +35,11 @@ do
         git -C "$pwd" fetch -q origin >/dev/null 2>&1 &
     fi
     cmd=$(cat $pwd/update/pipe)
-    branch=$(cat $pwd/update/branch 2>/dev/null)
+    # written by the bot (container): accept a plain branch name only
+    branch=$(cat $pwd/update/branch 2>/dev/null | tr -d '\r\n')
+    case "$branch" in
+        *[!A-Za-z0-9._/-]*|-*) branch="" ;;
+    esac
     if [[ -n "$cmd" ]]
     then
         _key=$(cat $pwd/update/key)
@@ -54,7 +59,7 @@ do
             if [[ -n "$branch" ]]
             then
                 tg_draft "changing branch"
-                git checkout -t origin/$branch || git checkout $branch
+                git checkout -t "origin/$branch" || git checkout "$branch"
             fi
             tg_draft "applying updates"
             git pull > ./update/message
@@ -70,7 +75,7 @@ do
             -X POST "https://$TELEGRAM_API/bot$_key/sendMessage" \
             -d "{\"chat_id\":$_chat_id,\"text\":\"bot started\"}" > /dev/null
 
-        bash $pwd/update/update.sh &
+        bash $pwd/scripts/update.sh &
         exit 0
     fi
     sleep 1

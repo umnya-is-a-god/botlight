@@ -1777,7 +1777,11 @@ class Bot
     {
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        exec('git -C / checkout config/AdGuardHome.yaml');
+        // restore the default config from the repo; /.git is mounted read-only
+        $default = shell_exec('git -C / show HEAD:config/AdGuardHome.yaml');
+        if (!empty($default)) {
+            file_put_contents('/config/AdGuardHome.yaml', $default);
+        }
         $this->adguardSync();
         $this->cloakNginx();
         sleep(3);
@@ -2927,15 +2931,30 @@ DNS-over-HTTPS with IP:
         }
     }
 
+    /**
+     * Published ports the admin switched on (AdGuard DoT 853, dnstt 53/udp).
+     * Only these flags are written from here; the host builds the compose
+     * file from them (scripts/ports.sh), so the bot never writes Docker config.
+     */
+    public function portSwitches(): array
+    {
+        $r = array_fill_keys(array_keys($this->ports), false);
+        foreach (@file('/update/ports', FILE_IGNORE_NEW_LINES) ?: [] as $l) {
+            if (preg_match('~^(\w+)=1$~', trim($l), $m) && array_key_exists($m[1], $r)) {
+                $r[$m[1]] = true;
+            }
+        }
+        return $r;
+    }
+
     public function getPorts()
     {
-        $f = '/docker/compose';
-        $c =  yaml_parse_file($f);
+        $s = $this->portSwitches();
         $r = [];
         foreach ($this->ports as $k => $v) {
             $r[$k] = [
-                'port'   => !empty($c['services'][$k]['ports']) ? explode(':', $c['services'][$k]['ports'][0])[0] : explode('/', $v)[0],
-                'enable' => !empty($c['services'][$k]['ports']),
+                'port'   => explode('/', $v)[0],
+                'enable' => $s[$k],
             ];
         }
         return $r;
@@ -3761,48 +3780,7 @@ DNS-over-HTTPS with IP:
         }
     }
 
-    public function dockerApi($url, $method = 'GET', $data = [])
-    {
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_CUSTOMREQUEST    => $method,
-            CURLOPT_POSTFIELDS       => !empty($data) ? json_encode($data) : null,
-            CURLOPT_URL              => "http://localhost$url",
-            CURLOPT_RETURNTRANSFER   => true,
-            CURLOPT_UNIX_SOCKET_PATH => '/var/run/docker.sock'
-        ]);
-        $r = json_decode(curl_exec($ch), true);
-        curl_close($ch);
-        return $r;
-    }
 
-    public function cleanDocker()
-    {
-        $r = $this->dockerApi('/images/json');
-        foreach ($r as $v) {
-            if (!empty($v['RepoTags'])) {
-                foreach ($v['RepoTags'] as $j) {
-                    if (preg_match('~^(mercurykd|botlight)/vpnbot~', $j)) {
-                        $i[] = $v['Id'];
-                        break;
-                    }
-                }
-            }
-        }
-        $r = $this->dockerApi('/containers/json?all=1');
-        foreach ($r as $v) {
-            if (preg_match('~^(mercurykd|botlight)/vpnbot~', $v['Image'])) {
-                $c[] = $v['ImageID'];
-            }
-        }
-        if (!empty($d = array_diff($i, $c))) {
-            foreach ($d as $v) {
-                $this->dockerApi("/images/$v", 'DELETE');
-            }
-        }
-        $this->dockerApi('/images/prune', 'POST', ['dangling' => true]);
-        $this->dockerApi('/build/prune', 'POST');
-    }
 
     public function mirrorMenu()
     {
@@ -6115,9 +6093,8 @@ DNS-over-HTTPS with IP:
     public function ports()
     {
         $text[] = 'Settings -> Ports';
-        $f      = '/docker/compose';
-        $c      = yaml_parse_file($f)['services'];
-        $pac = $this->getPacConf();
+        $c      = $this->portSwitches();
+        $pac    = $this->getPacConf();
         $data   = [
             [[
                 'text'          => $this->i18n($c['ad'] ? 'on' : 'off') . ' 853 AdguardHome DoT',
@@ -6152,51 +6129,14 @@ DNS-over-HTTPS with IP:
 
     public function hidePort($container)
     {
-        $ports = [
-            'ad'    => '853:853',
-            'dnstt' => '53:53/udp',
-        ];
-        $f = '/docker/compose';
-        $content = file_exists($f) ? file_get_contents($f) : '';
-
-        // Находим все сервисы с !override для ports
-        $overrides = [];
-        if (preg_match_all('/(\w+):\s*\n\s+ports:\s*!override/m', $content, $matches)) {
-            foreach ($matches[1] as $service) {
-                $overrides[$service] = true;
-            }
+        $s = $this->portSwitches();
+        if (array_key_exists($container, $s)) {
+            $s[$container] = !$s[$container];
+            file_put_contents('/update/ports', implode('', array_map(fn($k) => "$k=1\n", array_keys(array_filter($s)))));
+            $pac = $this->getPacConf();
+            $pac['restart'] = 1;
+            $this->setPacConf($pac);
         }
-
-        // Парсим YAML
-        $c = $content ? yaml_parse($content) : [];
-
-        // Изменяем структуру
-        if (!empty($c['services'][$container])) {
-            unset($c['services'][$container]);
-        } else {
-            $c['services'][$container]['ports'][] = $ports[$container];
-        }
-
-        // Записываем обратно
-        if (empty($c['services'])) {
-            file_put_contents($f, '');
-        } else {
-            $yaml = yaml_emit($c);
-            // Восстанавливаем !override для ports тех сервисов где он был
-            foreach ($overrides as $service => $val) {
-                // Заменяем "ports:" на "ports: !override" для конкретного сервиса
-                $yaml = preg_replace(
-                    '/(' . preg_quote($service, '/') . ':\s*\n\s+)ports:/m',
-                    '${1}ports: !override',
-                    $yaml
-                );
-            }
-            file_put_contents($f, $yaml);
-        }
-
-        $pac = $this->getPacConf();
-        $pac['restart'] = 1;
-        $this->setPacConf($pac);
         $this->ports();
     }
 

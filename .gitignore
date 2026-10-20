@@ -5,6 +5,8 @@
 !/logs/.gitkeep
 /ssh/*
 !/ssh/.gitkeep
+/sshpub/*
+!/sshpub/.gitkeep
 /app/zaprelists/*
 !/app/zaprelists/.gitkeep
 /sftp-config.json
@@ -16,7 +18,10 @@
 .idea/
 mirror/.env
 update/*
-!update/update.sh
+!update/.gitkeep
+.update_pid
+.xray_version
+docker-compose.ports.yml
 
 override.env
 override.html

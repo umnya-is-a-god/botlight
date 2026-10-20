@@ -11,7 +11,7 @@ v="$XRAY_VERSION"
 [ -z "$v" ] && v=latest
 
 if [ "$v" = latest ]; then
-    cache=./update/xray_version
+    cache=./.xray_version
     t=$(curl -s -m 10 -o /dev/null -w '%{redirect_url}' \
         https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip \
         | sed -n 's#.*/releases/download/\([^/]*\)/.*#\1#p')
@@ -22,4 +22,10 @@ if [ "$v" = latest ]; then
         v=$(cat "$cache")
     fi
 fi
+# a release tag or "latest" only: it goes into the build as an argument
+case "$v" in
+    latest) ;;
+    v[0-9]*) case "$v" in *[!v0-9.]*) v=latest ;; esac ;;
+    *) v=latest ;;
+esac
 echo "$v"

@@ -2,17 +2,21 @@
 export
 
 IP := $(or $(IP),$(shell hostname -I | awk '{print $$1}'))
+# compose files listed in COMPOSE_FILE (.env) must exist for every docker compose call
+_ := $(shell touch ./docker-compose.override.yml ./docker-compose.ports.yml)
 
 b:
 	XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose build
 preup:
-	bash ./update/update.sh &
+	bash ./scripts/update.sh &
 start: # запуск контейнеров
 	touch ./override.env ./docker-compose.override.yml ./config/location.conf ./config/override.conf
+	sh ./scripts/ports.sh
 	IP=$(IP) VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
+	-docker image prune -f > /dev/null # old builds of the botlight images
 u: preup start
 d: # остановка контейнеров
-	-kill -9 $(shell cat ./update/update_pid) > /dev/null
+	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null
 	docker compose down --remove-orphans
 dv: # остановка контейнеров
 	docker compose down -v
