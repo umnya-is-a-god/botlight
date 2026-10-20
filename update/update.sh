@@ -13,6 +13,7 @@ done
 
 > $pwd/update/pipe
 echo "$$" > $pwd/update/update_pid
+last_fetch=0
 
 tg_draft() {
     local text="$1"
@@ -25,6 +26,13 @@ tg_draft() {
 
 while true
 do
+    # fetch the bot repository (origin) hourly on the host, where the deploy
+    # key lives; the bot reads the fetched refs to report new commits
+    now=$(date +%s)
+    if (( now - last_fetch >= 3600 )); then
+        last_fetch=$now
+        git -C "$pwd" fetch -q origin >/dev/null 2>&1 &
+    fi
     cmd=$(cat $pwd/update/pipe)
     branch=$(cat $pwd/update/branch 2>/dev/null)
     if [[ -n "$cmd" ]]

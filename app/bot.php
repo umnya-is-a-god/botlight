@@ -245,6 +245,9 @@ class Bot
             case preg_match('~^/pacMenu (\d+)$~', $this->input['callback'], $m):
                 $this->pacMenu($m[1]);
                 break;
+            case preg_match('~^/changelog$~', $this->input['callback'], $m):
+                $this->changelog();
+                break;
             case preg_match('~^/applyupdatebot$~', $this->input['callback'], $m):
                 $this->applyupdatebot();
                 break;
@@ -1134,39 +1137,53 @@ class Bot
         $this->pinAdmin($conf['pinbackup']);
     }
 
+    /**
+     * New commits in the bot's own repository (origin, e.g. botlight).
+     * The host side update/update.sh runs "git fetch" every hour with the
+     * server's deploy key, so here only the already fetched refs are read.
+     */
+    public function newCommits($limit = 10): array
+    {
+        exec('git -C / log --no-merges --format=%s -n ' . (int) $limit . ' HEAD..@{u} 2>/dev/null', $out);
+        return array_values(array_filter(array_map('trim', $out)));
+    }
+
+    public function changelog()
+    {
+        $commits = $this->newCommits(30);
+        $text    = $commits
+            ? "New in " . exec('git -C / rev-parse --abbrev-ref @{u} 2>/dev/null') . ":\n\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
+            : 'no updates';
+        $this->send($this->input['chat'], $text);
+    }
+
     public function checkVersion()
     {
         try {
             require __DIR__ . '/config.php';
             if (!empty($c['admin']) && (empty($this->time) || ((time() - $this->time) > 3600))) {
                 $this->time = time();
-                $current    = file_get_contents('/version');
-                $b          = exec('git -C / rev-parse --abbrev-ref HEAD');
-                $last       = file_get_contents("https://raw.githubusercontent.com/mercurykd/vpnbot/$b/version");
-                if (!empty($last) && $last != $this->last && $last != $current) {
+                $last       = trim(exec('git -C / rev-parse @{u} 2>/dev/null'));
+                $commits    = $this->newCommits();
+                if (!empty($last) && !empty($commits) && $last != $this->last) {
                     $this->last = $last;
-                    $diff       = array_slice(explode("\n", $last), 0, count(explode("\n", $last)) - count(explode("\n", $current)));
-                    $diff       = array_slice($diff, 0, 10);
-                    if (!empty($diff)) {
-                        exec('git -C / fetch');
-                        foreach ($c['admin'] as $k => $v) {
-                            $this->send($v, implode("\n", $diff), 0, [
+                    foreach ($c['admin'] as $k => $v) {
+                        $this->send($v, "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits)), 0, [
+                            [
                                 [
-                                    [
-                                        'text'    => 'changelog',
-                                        'web_app' => ['url' => "https://raw.githubusercontent.com/mercurykd/vpnbot/$b/version"],
-                                    ],
-                                    [
-                                        'text'          => $this->i18n('update bot'),
-                                        'callback_data' => "/applyupdatebot",
-                                    ],
-                                ]
-                            ]);
-                        }
-                        if ($this->getPacConf()['autoupdate']) {
-                            $this->input['chat'] = $this->input['from'] = $c['admin'][0];
-                            $this->applyupdatebot();
-                        }
+                                    'text'          => 'changelog',
+                                    'callback_data' => "/changelog",
+                                ],
+                                [
+                                    'text'          => $this->i18n('update bot'),
+                                    'callback_data' => "/applyupdatebot",
+                                ],
+                            ]
+                        ]);
+                    }
+                    if ($this->getPacConf()['autoupdate']) {
+                        $this->input['chat'] = $this->input['from'] = $c['admin'][0];
+                        $this->applyupdatebot();
                     }
                 }
             }
@@ -3103,11 +3120,10 @@ DNS-over-HTTPS with IP:
         $data = $menu[$type ?: 'main' ]['data'];
 
         if (empty($type) && $update) {
-            $b = exec('git -C / rev-parse --abbrev-ref HEAD');
             array_unshift($data, [
                 [
-                    'text'    => 'changelog',
-                    'web_app' => ['url' => "https://raw.githubusercontent.com/mercurykd/vpnbot/$b/version"],
+                    'text'          => 'changelog',
+                    'callback_data' => "/changelog",
                 ],
                 [
                     'text'          => $this->i18n('update bot'),
@@ -5923,8 +5939,8 @@ DNS-over-HTTPS with IP:
                     'callback_data' => "/branches",
                 ],
                 [
-                    'text'    => $this->i18n('changelog'),
-                    'web_app' => ['url' => "https://raw.githubusercontent.com/mercurykd/vpnbot/$b/version"],
+                    'text'          => $this->i18n('changelog'),
+                    'callback_data' => "/changelog",
                 ],
             ],
             [
