@@ -5392,6 +5392,12 @@ DNS-over-HTTPS with IP:
         } else {
             @touch("$f.srs");
         }
+        if (!is_file("$f.srs")) {
+            // compile failed: an error, not an empty file the client cannot parse
+            error_log("rule-set $name: sing-box compile failed");
+            http_response_code(500);
+            exit;
+        }
         readfile("$f.srs");
         exit;
     }

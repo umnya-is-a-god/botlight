@@ -5,7 +5,9 @@ FROM $image
 ARG dnslookup_version=1.11.1
 ARG dnslookup_sha256=daf7b40d498d8ac8a94672b5f95e94d3efac53641a51fa72a5ad776e2cd532f1
 ARG singbox_version=1.14.3
-ARG singbox_sha256=e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee
+# the -musl build: the plain linux-amd64 one is linked against glibc and
+# does not run on Alpine
+ARG singbox_sha256=41fc81fd041134d4d7d850a928d7d2cde17a7d6563953f406b22d32a68bfab1f
 ARG mihomo_version=1.19.32
 ARG mihomo_sha256=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10
 RUN apk add --no-cache --update php83 \
@@ -35,13 +37,14 @@ RUN apk add --no-cache --update php83 \
     && echo "$dnslookup_sha256  dnslookup.tar.gz" | sha256sum -c - \
     && tar -xf dnslookup.tar.gz \
     && mv linux-amd64/dnslookup /usr/bin/ \
-    && wget -O sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v$singbox_version/sing-box-$singbox_version-linux-amd64.tar.gz \
+    && wget -O sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v$singbox_version/sing-box-$singbox_version-linux-amd64-musl.tar.gz \
     && echo "$singbox_sha256  sing-box.tar.gz" | sha256sum -c - \
     && tar -xf sing-box.tar.gz \
-    && mv sing-box-$singbox_version-linux-amd64/sing-box /usr/bin/ \
+    && mv sing-box-$singbox_version-linux-amd64-musl/sing-box /usr/bin/ \
     && wget -O mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v$mihomo_version/mihomo-linux-amd64-v$mihomo_version.gz \
     && echo "$mihomo_sha256  mihomo.gz" | sha256sum -c - \
     && gunzip mihomo.gz \
     && mv mihomo /usr/bin/mihomo \
     && chmod +x /usr/bin/mihomo /usr/bin/dnslookup /usr/bin/sing-box \
-    && cd / && rm -rf /tmp/dl
+    && cd / && rm -rf /tmp/dl \
+    && sing-box version && mihomo -v && dnslookup --version
