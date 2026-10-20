@@ -4733,7 +4733,9 @@ DNS-over-HTTPS with IP:
 
     public function warpStatus()
     {
-        $st = $this->ssh('curl -m 1 -x socks5://wp:1080 https://cloudflare.com/cdn-cgi/trace', 'xr');
+        // socks5h: the name is resolved by microsocks (IPv4, see start_wp.sh),
+        // like Xray's domain requests; a local lookup may pick IPv6
+        $st = $this->ssh('curl -s -m 3 -x socks5h://wp:1080 https://cloudflare.com/cdn-cgi/trace', 'xr');
         preg_match('~warp=(\w+)~', $st, $m);
         return trim($m[1]) ?: 'off';
     }

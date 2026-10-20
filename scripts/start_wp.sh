@@ -56,4 +56,7 @@ echo "[warp] Starting WireGuard (WARP)..."
 wg-quick up "$WGCF_CONF"
 
 echo "[warp] Starting microsocks on port $SOCKS_PORT..."
-exec microsocks -p "$SOCKS_PORT"
+# -b 0.0.0.0: outgoing connections over IPv4, the address family WARP has
+# here (the profile is stripped of IPv6); without it microsocks takes the
+# first address of a name, which can be IPv6 and fail
+exec microsocks -p "$SOCKS_PORT" -b 0.0.0.0
