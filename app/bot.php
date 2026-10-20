@@ -393,9 +393,6 @@ class Bot
             case preg_match('~^/templateUser (sing|clash) (\d+)$~', $this->input['callback'], $m):
                 $this->templateUser($m[1], $m[2]);
                 break;
-            case preg_match('~^/timerXr (\d+)$~', $this->input['callback'], $m):
-                $this->timerXr($m[1]);
-                break;
             case preg_match('~^/switchXr (\d+)$~', $this->input['callback'], $m):
                 $this->switchXr($m[1]);
                 break;
@@ -440,21 +437,6 @@ class Bot
                 break;
             case preg_match('~^/routes(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->routes($m[1] ?: 0);
-                break;
-            case preg_match('~^/tun$~', $this->input['callback'], $m):
-                $this->tun();
-                break;
-            case preg_match('~^/tunpackage(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->tunpackage($m[1] ?: 0);
-                break;
-            case preg_match('~^/tunpackagemode$~', $this->input['callback'], $m):
-                $this->tunpackagemode();
-                break;
-            case preg_match('~^/tunprocessmode$~', $this->input['callback'], $m):
-                $this->tunprocessmode();
-                break;
-            case preg_match('~^/tunprocess(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->tunprocess($m[1] ?: 0);
                 break;
             case preg_match('~^/xtlswarp(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->xtlswarp($m[1] ?: 0);
@@ -908,7 +890,6 @@ class Bot
     {
         $period = 10;
         while (true) {
-            $this->shutdownClientXr();
             $this->checkVersion();
             $this->checkBackup();
             $this->checkLogs();
@@ -1257,18 +1238,6 @@ class Bot
         return trim($text) ?: '♾';
     }
 
-    public function shutdownClientXr()
-    {
-        try {
-            $c = $this->getXray();
-            foreach ($c['inbounds'][0]['settings']['clients'] as $k => $v) {
-                if (!empty($v['time']) && ($v['time'] < time())) {
-                    $this->switchXr($k, 1);
-                }
-            }
-        } catch (Exception $e) {
-        }
-    }
 
     public function export()
     {
@@ -1650,20 +1619,6 @@ class Bot
         ];
     }
 
-    public function timerXr($k)
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter time like https://www.php.net/manual/ru/function.strtotime.php:",
-            $this->input['message_id'],
-            reply: 'enter time like https://www.php.net/manual/ru/function.strtotime.php:',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setTimerXr',
-            'args'          => [$k],
-        ];
-    }
 
     public function setAdKey($key)
     {
@@ -2018,12 +1973,6 @@ DNS-over-HTTPS with IP:
                 break;
             case 'rulessetlist':
                 $this->xtlsrulesset($page);
-                break;
-            case 'tunprocess':
-                $this->tunprocess($page);
-                break;
-            case 'tunpackage':
-                $this->tunpackage($page);
                 break;
             case 'white':
             case 'deny':
@@ -2547,59 +2496,9 @@ DNS-over-HTTPS with IP:
         }
     }
 
-    public function tunpackagemode()
-    {
-        $c = $this->getPacConf();
-        $c['tunpackagemode'] = $c['tunpackagemode'] ? 0 : 1;
-        $this->setPacConf($c);
-        $this->tun();
-    }
 
-    public function tunprocessmode()
-    {
-        $c = $this->getPacConf();
-        $c['tunprocessmode'] = $c['tunprocessmode'] ? 0 : 1;
-        $this->setPacConf($c);
-        $this->tun();
-    }
 
-    public function tunpackage($page = 0)
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> ' . $this->i18n('package');
 
-        [$data] = $this->listPac('tunpackage', $page, 'tunpackage');
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/tun",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
-
-    public function tunprocess($page = 0)
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> ' . $this->i18n('process');
-
-        [$data] = $this->listPac('tunprocess', $page, 'tunprocess');
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/tun",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
 
     public function xtlsblock($page = 0)
     {
@@ -4034,33 +3933,10 @@ DNS-over-HTTPS with IP:
         }
     }
 
-    public function setTimerXr($time, $i)
-    {
-        $c = $this->getXray();
-        if (empty($time)) {
-            unset($c['inbounds'][0]['settings']['clients'][$i]['time']);
-        } else {
-            $time = strtotime($time);
-            if ($time === false) {
-                $this->send($this->input['chat'], 'wrong format');
-                return;
-            }
-            $c['inbounds'][0]['settings']['clients'][$i]['time'] = $time;
-        }
-        $this->restartXray($c, 1);
-        if (!empty($c['inbounds'][0]['settings']['clients'][$i]['off'])) {
-            $this->switchXr($i, 0, 1);
-        } else {
-            $this->userXr($i);
-        }
-    }
 
-    public function switchXr($i, $nm = 0, $time = false)
+    public function switchXr($i, $nm = 0)
     {
         $c = $this->getXray();
-        if (empty($time)) {
-            unset($c['inbounds'][0]['settings']['clients'][$i]['time']);
-        }
         if (empty($c['inbounds'][0]['settings']['clients'][$i]['off'])) {
             $c['inbounds'][0]['settings']['clients'][$i]['off'] = $c['inbounds'][0]['settings']['clients'][$i]['id'];
             $c['inbounds'][0]['settings']['clients'][$i]['id']  = trim($this->ssh('xray uuid', 'xr'));
@@ -4480,10 +4356,6 @@ DNS-over-HTTPS with IP:
                 'text'          => $this->i18n('routes'),
                 'callback_data' => "/routes",
             ],
-            [
-                'text'          => $this->i18n('tun lists'),
-                'callback_data' => "/tun",
-            ],
         ];
         $on = $off = 0;
         foreach ($c['inbounds'][0]['settings']['clients'] as $k => $v) {
@@ -4495,7 +4367,6 @@ DNS-over-HTTPS with IP:
         }
         $type    = !empty($this->getPacConf()['xtlslist']);
         $clients = array_filter($c['inbounds'][0]['settings']['clients'], fn($e) => !$type ? empty($e['off']) : !empty($e['off']));
-        uasort($clients, fn($a, $b) => ($a['time'] ?: PHP_INT_MAX) <=> ($b['time'] ?: PHP_INT_MAX));
 
         $all     = (int) ceil(count($clients) / $this->limit);
         $page    = min($page, $all - 1);
@@ -4504,10 +4375,9 @@ DNS-over-HTTPS with IP:
         foreach ($clients as $k => $v) {
             $download = $this->getBytes($st['users'][$k]['global']['download'] + $st['users'][$k]['session']['download']);
             $upload   = $this->getBytes($st['users'][$k]['global']['upload'] + $st['users'][$k]['session']['upload']);
-            $time     = !empty($v['time']) ? $this->getTime($v['time']) : '';
             $data[]   = [
                 [
-                    'text'          => "{$v['email']}" . ($time ? ": $time" : '') . " (↓$download  ↑$upload)",
+                    'text'          => "{$v['email']} (↓$download  ↑$upload)",
                     'callback_data' => "/userXr $k",
                 ],
             ];
@@ -4593,47 +4463,6 @@ DNS-over-HTTPS with IP:
         );
     }
 
-    public function tun()
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('tun lists');
-
-        $c = $this->getPacConf();
-
-        $data = [
-            [
-                [
-                    'text'          => $this->i18n('package'),
-                    'callback_data' => "/tunpackage",
-                ],
-                [
-                    'text'          => 'mode: ' . $this->i18n(!empty($c['tunpackagemode']) ? 'exclude' : 'include'),
-                    'callback_data' => "/tunpackagemode",
-                ],
-            ],
-            [
-                [
-                    'text'          => $this->i18n('process'),
-                    'callback_data' => "/tunprocess",
-                ],
-                [
-                    'text'          => 'mode: ' . $this->i18n(!empty($c['tunprocessmode']) ? 'exclude' : 'include'),
-                    'callback_data' => "/tunprocessmode",
-                ],
-            ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/xray",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
 
     public function warpPlus()
     {
@@ -4963,10 +4792,6 @@ DNS-over-HTTPS with IP:
         ];
         $data[] = [
             [
-                'text'          => $c['time'] ? "timer: " . $this->getTime($c['time']) : $this->i18n('timer'),
-                'callback_data' => "/timerXr $i",
-            ],
-            [
                 'text'          => $this->i18n($c['off'] ? 'off' : 'on'),
                 'callback_data' => "/switchXr $i",
             ],
@@ -4984,10 +4809,6 @@ DNS-over-HTTPS with IP:
             ],
         ];
         $data[] = [
-            [
-                'text'          => $this->i18n('qr short'),
-                'callback_data' => "/qrXray $i",
-            ],
             [
                 'text'          => $this->i18n('qr singbox'),
                 'callback_data' => "/qrXray {$i}_2",
@@ -5274,26 +5095,6 @@ DNS-over-HTTPS with IP:
                         $c['proxies'][$index]["skip-cert-verify"] = false;
                         $c['proxies'][$index]['servername']       = '~domain~';
                         break;
-                }
-
-
-                $tunpackage = array_filter($pac['tunpackage'] ?? []);
-                $tunprocess = array_filter($pac['tunprocess'] ?? []);
-                if (!empty($tunpackage) || !empty($tunprocess)) {
-                    if (!empty($tunpackage)) {
-                        if (!empty($pac['tunpackagemode'])) {
-                            $c['tun']['exclude-package'] = array_keys($tunpackage);
-                        } else {
-                            $c['tun']['include-package'] = array_keys($tunpackage);
-                        }
-                    }
-                    if (!empty($tunprocess)) {
-                        if (!empty($pac['tunprocessmode'])) {
-                            $c['tun']['exclude-process'] = array_keys($tunprocess);
-                        } else {
-                            $c['tun']['include-process'] = array_keys($tunprocess);
-                        }
-                    }
                 }
                 break;
         }

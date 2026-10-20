@@ -14,6 +14,7 @@
 * AWG-ссылка для Vless, Settings → Ports для удалённых сервисов.
 * В меню маршрутов Vless — списки subnet, process, package.
 * Мёртвый код: около 130 методов, около 20 маршрутов без кнопок, устаревший `offWarp` для старого клиента Cloudflare, недоделанные списки exclude/reverse/subzones, около 35 строк перевода.
+* Кнопки и функции «tun lists» (списки package/process для TUN в mihomo), «set timer» (срок действия пользователя Xray и автоотключение) и «qr short» (QR короткой ссылки vless; QR для sing-box остался).
 
 ### Изменено
 

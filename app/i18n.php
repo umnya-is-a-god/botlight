@@ -105,10 +105,6 @@ $i = [
         'en' => 'Some clients require a valid certificate when connecting, such as windows 11 DoH or ShadowSocks Android (PAC url), this requires a domain',
         'ru' => 'Некоторым клиентам требуется валидный сертификат при подключении, например Windows 11 DoH или ShadowSocks Android (URL-адрес PAC), для этого требуется домен',
     ],
-    'timer'                => [
-        'en' => 'set timer',
-        'ru' => 'установить время действия',
-    ],
     'reset nginx'          => [
         'en' => 'reset nginx',
         'ru' => 'сбросить nginx',
