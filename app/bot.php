@@ -275,12 +275,6 @@ class Bot
             case preg_match('~^/dnsttPassword$~', $this->input['callback'], $m):
                 $this->dnsttPassword();
                 break;
-            case preg_match('~^/setdnsttDomain (\w+)$~', $this->input['callback'], $m):
-                $this->setdnsttDomain($m[1]);
-                break;
-            case preg_match('~^/setdnsttPassword (\w+)$~', $this->input['callback'], $m):
-                $this->setdnsttPassword($m[1]);
-                break;
             case preg_match('~^/getLog (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
                 $this->getLog(...explode('_', $m['arg']));
                 break;
@@ -2242,7 +2236,7 @@ DNS-over-HTTPS with IP:
     public function subnet($wgpage = 0, $page = 0, $openconnect = 0)
     {
         $count  = $this->limit;
-        $text   = 'Menu -> ' . ($openconnect ? 'Openconnect' : 'Wireguard') . ' -> ' . $this->i18n('listSubnet') . "\n";
+        $text   = 'Menu -> Openconnect -> ' . $this->i18n('listSubnet') . "\n";
         $data[] = [
             [
                 'text'          => $this->i18n('calc'),
@@ -5729,7 +5723,7 @@ DNS-over-HTTPS with IP:
             location
         CONF;
         $template = preg_replace('~(location /adguard.+?})\s*location~s', $r, $template);
-        $template = preg_replace('~(/webapp|/pac|/adguard|/ws|/v2ray|location /dns-query)~', '${1}' . $h, $template);
+        $template = preg_replace('~(/webapp|/pac|/adguard|/ws|location /dns-query)~', '${1}' . $h, $template);
         file_put_contents('/config/nginx.conf', $template);
         $x = $this->getXray();
         if (!empty($x['inbounds'][0]['streamSettings']['wsSettings']['path'])) {

@@ -53,17 +53,9 @@ $i = [
         'en' => 'Menu',
         'ru' => 'Меню',
     ],
-    'update status'        => [
-        'en' => 'update status',
-        'ru' => 'обновить статус',
-    ],
     'add peer'             => [
         'en' => 'add peer',
         'ru' => 'добавить клиента',
-    ],
-    'subnet'               => [
-        'en' => 'subnet',
-        'ru' => 'подсеть',
     ],
     'rename'               => [
         'en' => 'rename',
@@ -117,10 +109,6 @@ $i = [
         'en' => 'language',
         'ru' => 'язык интерфейса',
     ],
-    'adguard web'          => [
-        'en' => 'web interface',
-        'ru' => 'вебморда адгварда',
-    ],
     'domain explain'       => [
         'en' => 'Some clients require a valid certificate when connecting, such as windows 11 DoH or ShadowSocks Android (PAC url), this requires a domain',
         'ru' => 'Некоторым клиентам требуется валидный сертификат при подключении, например Windows 11 DoH или ShadowSocks Android (URL-адрес PAC), для этого требуется домен',
@@ -173,10 +161,6 @@ $i = [
         'en' => 'mihomo',
         'ru' => 'mihomo',
     ],
-    'geodb'  => [
-        'en' => 'GeoIp/GeoSite',
-        'ru' => 'GeoIp/GeoSite',
-    ],
     'changeFakeDomain'  => [
         'en' => 'changeFakeDomain',
         'ru' => 'фейковый домен',
@@ -224,14 +208,6 @@ $i = [
     'browser_notify_off'  => [
         'en' => 'web panel is only available from telegram',
         'ru' => 'веб панель доступна только из телеграмма',
-    ],
-    'no updates'  => [
-        'en' => 'no updates',
-        'ru' => 'нет обновлений',
-    ],
-    'have updates'  => [
-        'en' => '🟢 have updates',
-        'ru' => '🟢 есть обновления',
     ],
     'fake html'  => [
         'en' => 'fake html',
