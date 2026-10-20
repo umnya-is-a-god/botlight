@@ -48,7 +48,7 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 
 #### Версия Xray
 
-Указана в `.env` (`XRAY_VERSION=v26.9.30`). Чтобы сменить: поправьте значение и выполните `make r`, образ пересоберётся.
+Указана в `.env` (`XRAY_VERSION=v26.3.27`, последний релиз с отметкой Latest на GitHub). Чтобы сменить: поправьте значение и выполните `make r`, образ пересоберётся.
 
 #### Обновление
 
