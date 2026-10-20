@@ -9,8 +9,6 @@
 !/app/zaprelists/.gitkeep
 /sftp-config.json
 /tg.pyr
-/config/wg0.conf
-/config/hwid.json
 /todo.todo
 /app/zapretlists/*
 !/app/zapretlists/.gitkeep
