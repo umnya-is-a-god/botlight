@@ -26,6 +26,7 @@ class Bot
     public $time2;
     public $time3;
     public $time_xray_stats;
+    public $time_warp_status;
     public $admin;
     public $ports;
 
@@ -845,6 +846,7 @@ class Bot
             $this->checkCert();
             $this->autoAnalyzeLogs();
             $this->xrayStatsUser();
+            $this->checkWarpStatus();
             sleep($period);
         }
     }
@@ -2771,7 +2773,7 @@ DNS-over-HTTPS with IP:
                 $status[]  = $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
                 $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port unavailable');
             }
-            $status[]  = $this->i18n($this->warpStatus()) . ' ' . $this->i18n('warp');
+            $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
             $portcol[] = '';
             $main[] = '<code>';
             $main[] = $this->alignColumns([$status, $portcol]);
@@ -4375,6 +4377,31 @@ DNS-over-HTTPS with IP:
         $this->warp();
     }
 
+    /**
+     * The WARP check goes through the tunnel and takes seconds, so the cron
+     * loop (service container) runs it once a minute and keeps the answer
+     * in a file; the main menu only reads it.
+     */
+    public function checkWarpStatus($force = false)
+    {
+        if ($force || empty($this->time_warp_status) || time() - $this->time_warp_status > 60) {
+            $this->time_warp_status = time();
+            $f = '/logs/.warp_status';
+            file_put_contents("$f.tmp", $this->warpStatus());
+            rename("$f.tmp", $f);
+        }
+    }
+
+    public function cachedWarpStatus()
+    {
+        // no answer for 3 minutes (cron stopped): treat as unknown/off
+        $f = '/logs/.warp_status';
+        if (is_file($f) && time() - filemtime($f) < 180) {
+            return trim(file_get_contents($f)) ?: 'off';
+        }
+        return 'off';
+    }
+
     public function warpStatus()
     {
         // through the WARP socks proxy, like Xray's warp outbound (the name is
@@ -5976,7 +6003,10 @@ DNS-over-HTTPS with IP:
     public function cleanLog()
     {
         foreach (scandir('/logs/') as $k => $v) {
-            file_put_contents("/logs/$v", '');
+            // the listed logs only: not . / .. or service files like .warp_status
+            if (!preg_match('~^\.~', $v) && is_file("/logs/$v")) {
+                file_put_contents("/logs/$v", '');
+            }
         }
         $this->logs();
     }
