@@ -1,8 +1,9 @@
 {
     "tcp-concurrent": true,
-    "enable-process": true,
-    "find-process-mode": "strict",
-    "global-client-fingerprint": "chrome",
+    "find-process-mode": "always",
+    "authentication": [
+        "123:321"
+    ],
     "mode": "rule",
     "log-level": "info",
     "ipv6": false,
@@ -10,7 +11,7 @@
     "unified-delay": false,
     "profile": {
         "store-selected": true,
-        "store-fake-ip": false
+        "store-fake-ip": true
     },
     "sniffer": {
         "enable": true,
@@ -46,26 +47,22 @@
         "auto-detect-interface": true,
         "strict-route": true
     },
+    "hosts": {
+        "~domain~": "~ip~"
+    },
     "dns": {
         "enable": true,
         "prefer-h3": false,
         "ipv6": false,
-        "enhanced-mode": "redir-host",
-        "default-nameserver": [
-            "8.8.8.8",
-            "1.1.1.1",
-            "9.9.9.9"
+        "enhanced-mode": "fake-ip",
+        "fake-ip-filter": [
+            "~domain~",
+            "+.lan",
+            "+.local"
         ],
         "nameserver": [
             "~dns~"
-        ],
-        "fallback": [
-            "https://8.8.8.8/dns-query",
-            "https://9.9.9.9/dns-query"
-        ],
-        "fallback-filter": {
-            "geoip": false
-        }
+        ]
     },
     "proxies": [
         {
@@ -83,7 +80,7 @@
                 "short-id": "~short_id~"
             },
             "servername": "~server_name~",
-            "client-fingerprint": "chrome"
+            "client-fingerprint": "firefox"
         }
     ],
     "proxy-groups": [
@@ -96,8 +93,28 @@
         }
     ],
     "add-rule-providers": true,
-    "rule-providers": {},
+    "rule-providers": {
+        "tun0guard": {
+            "type": "inline",
+            "behavior": "classical",
+            "payload": [
+                "NOT,((PROCESS-NAME-REGEX,.+))"
+            ]
+        },
+        "pcgate": {
+            "type": "inline",
+            "behavior": "classical",
+            "payload": [
+                "AND,((PROCESS-NAME-WILDCARD,*.exe),(NOT,((OR,((PROCESS-NAME,firefox.exe),(PROCESS-NAME,msedgewebview2.exe),(PROCESS-NAME,claude.exe),(PROCESS-NAME,chatgpt.exe),(PROCESS-NAME,spotify.exe),(PROCESS-NAME,whatsapp.exe),(PROCESS-NAME,figma.exe),(PROCESS-NAME,codex.exe),(PROCESS-NAME,Discord.exe),(PROCESS-NAME,chrome.exe),(PROCESS-NAME,Telegram.exe),(PROCESS-NAME,CitrixReceiverUpdater.exe))))))"
+            ]
+        }
+    },
     "rules": [
+        {
+            "type": "RULE-SET",
+            "name": "tun0guard",
+            "action": "REJECT"
+        },
         {
             "type": "RULE-SET",
             "list": "~block~",
@@ -105,6 +122,11 @@
             "interval": 60,
             "behavior": "classical",
             "name": "block"
+        },
+        {
+            "type": "RULE-SET",
+            "name": "pcgate",
+            "action": "DIRECT"
         },
         {
             "type": "RULE-SET",
