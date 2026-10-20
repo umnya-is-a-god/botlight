@@ -6704,13 +6704,14 @@ DNS-over-HTTPS with IP:
         ]);
         $res = curl_exec($ch);
         $r   = json_decode($res, true);
-        if (!empty($res['description']) || is_null($res)) {
-            file_put_contents('/logs/requests_error', var_export([
+        // log failed calls: no answer at all, or Telegram refused the request
+        if (!is_array($r) || empty($r['ok'])) {
+            file_put_contents('/logs/requests_error', date('Y-m-d H:i:s ') . var_export([
                 'r' => [
                     'method' => $method,
                     'data'   => $data,
                 ],
-                'a' => $res,
+                'a' => $res === false ? 'curl: ' . curl_error($ch) : $res,
             ], true) . "\n", FILE_APPEND);
         }
         return $r;
@@ -6721,9 +6722,13 @@ DNS-over-HTTPS with IP:
         $offset = -1;
         while (true) {
             $r = $this->request('getUpdates', [
-                'offset'  => $offset,
-                'limit'   => 3,
-                'timeout' => 5,
+                'offset'          => $offset,
+                'limit'           => 3,
+                'timeout'         => 5,
+                // explicit: without it Telegram keeps the list from an
+                // earlier webhook or bot on this token, which may leave out
+                // button presses (callback_query)
+                'allowed_updates' => json_encode(['message', 'callback_query', 'inline_query', 'channel_post', 'my_chat_member']),
             ]);
             if (!empty($r['description'])) {
                 error_log('getUpdates error: ' . $r['description']);
