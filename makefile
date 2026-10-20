@@ -13,7 +13,8 @@ start: # запуск контейнеров
 	touch ./override.env ./docker-compose.override.yml ./config/location.conf ./config/override.conf
 	sh ./scripts/ports.sh
 	IP=$(IP) VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
-	-docker image prune -f > /dev/null # old builds of the botlight images
+	@# drop superseded builds of the botlight images (quiet)
+	-@docker image prune -f > /dev/null
 u: preup start
 d: # остановка контейнеров
 	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null
