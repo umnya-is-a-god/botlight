@@ -4,12 +4,12 @@ export
 IP := $(or $(IP),$(shell hostname -I | awk '{print $$1}'))
 
 b:
-	docker compose build
+	XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose build
 preup:
 	bash ./update/update.sh &
 start: # запуск контейнеров
 	touch ./override.env ./docker-compose.override.yml ./config/location.conf ./config/override.conf
-	IP=$(IP) VER=$(shell git describe --tags) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
+	IP=$(IP) VER=$(shell git describe --tags) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
 u: preup start
 d: # остановка контейнеров
 	-kill -9 $(shell cat ./update/update_pid) > /dev/null
