@@ -847,7 +847,7 @@ class Bot
         $this->setPacConf($pac);
         $clients = $this->getClientsOc();
         foreach ($clients as $k => $v) {
-            $this->ssh("echo '$pass' | ocpasswd -c /etc/ocserv/ocserv.passwd $v", 'oc');
+            $this->ssh('echo ' . escapeshellarg($pass) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($v), 'oc');
         }
         $this->restartOcserv(file_get_contents('/config/ocserv.conf'));
         $this->menu('oc');
@@ -925,8 +925,8 @@ class Bot
                 if (!empty($users = $x['inbounds'][0]['settings']['clients'])) {
                     $tmp = [];
                     foreach ($users as $k => $v) {
-                        $d = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name "user>>>' . $v['email'] . '>>>traffic>>>downlink" 2>&1', 'xr'), true)['stat']['value'] ?: 0;
-                        $u = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name "user>>>' . $v['email'] . '>>>traffic>>>uplink" 2>&1', 'xr'), true)['stat']['value'] ?: 0;
+                        $d = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name ' . escapeshellarg("user>>>{$v['email']}>>>traffic>>>downlink") . ' 2>&1', 'xr'), true)['stat']['value'] ?: 0;
+                        $u = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name ' . escapeshellarg("user>>>{$v['email']}>>>traffic>>>uplink") . ' 2>&1', 'xr'), true)['stat']['value'] ?: 0;
                         $tmp[$k] = [
                             'session' => [
                                 'download' => $d,
@@ -1392,7 +1392,7 @@ class Bot
     {
         $link    = $this->linkXray($i, $s);
         $qr_file = __DIR__ . "/qr/xray.png";
-        exec("qrencode -t png -o $qr_file '$link'");
+        exec('qrencode -t png -o ' . escapeshellarg($qr_file) . ' ' . escapeshellarg($link));
         $r = $this->sendPhoto(
             $this->input['chat'],
             curl_file_create($qr_file),
@@ -1499,9 +1499,14 @@ class Bot
             case 'letsencrypt':
                 $out[] = 'Install certificate:';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $adguardClient = $conf['adguardkey'] ? "-d {$conf['adguardkey']}.{$conf['domain']}" : '';
-                $oc = $this->getHashSubdomain('oc');
-                exec("certbot certonly --force-renew --preferred-chain 'ISRG Root X1' -n --agree-tos --email mail@{$conf['domain']} -d {$conf['domain']}" . ($oc ? " -d $oc.{$conf['domain']}" : '') . " $adguardClient --webroot -w /certs/ --logs-dir /logs --max-log-backups 0 2>&1", $out, $code);
+                $oc      = $this->getHashSubdomain('oc');
+                $domains = array_filter([
+                    $conf['domain'],
+                    $oc ? "$oc.{$conf['domain']}" : '',
+                    $conf['adguardkey'] ? "{$conf['adguardkey']}.{$conf['domain']}" : '',
+                ]);
+                $args = implode(' ', array_map(fn($e) => '-d ' . escapeshellarg($e), $domains));
+                exec("certbot certonly --force-renew --preferred-chain 'ISRG Root X1' -n --agree-tos --email " . escapeshellarg("mail@{$conf['domain']}") . " $args --webroot -w /certs/ --logs-dir /logs --max-log-backups 0 2>&1", $out, $code);
                 if ($code > 0) {
                     $this->send($this->input['chat'], "ERROR\n" . implode("\n", $out));
                     break;
@@ -1849,7 +1854,7 @@ DNS-over-HTTPS with IP:
 
     public function dnscheck($dns)
     {
-        exec("JSON=1 dnslookup $dns", $out, $code);
+        exec('JSON=1 dnslookup ' . implode(' ', array_map('escapeshellarg', preg_split('~\s+~', trim($dns)))), $out, $code);
         if ($code) {
             $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out), mode: false);
         } else {
@@ -2746,7 +2751,7 @@ DNS-over-HTTPS with IP:
 
     public function pacUpdate($import = '')
     {
-        exec("php updatepac.php start {$this->input['chat']} {$this->input['message_id']} {$this->input['callback_id']} $import > /dev/null &");
+        exec('php updatepac.php start ' . implode(' ', array_map(fn($e) => escapeshellarg((string) $e), [$this->input['chat'], $this->input['message_id'], $this->input['callback_id'], $import])) . ' > /dev/null &');
     }
 
     public function i18n(string $menu): string
@@ -2851,9 +2856,10 @@ DNS-over-HTTPS with IP:
     {
         $c = $this->getPacConf();
         $this->ssh('pkill dnstt', 'dnstt');
-        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword'])) {
+        // the domain goes into a background "sh -c" command: allow hostnames only
+        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~', $c['dnsttDomain'])) {
             $this->ssh("adduser -D -s /bin/sh vpnbot", 'dnstt');
-            $this->ssh("echo 'vpnbot:{$c['dnsttPassword']}' | chpasswd", 'dnstt');
+            $this->ssh('echo ' . escapeshellarg("vpnbot:{$c['dnsttPassword']}") . ' | chpasswd', 'dnstt');
             if (!file_exists('/config/dnstt/server.key')) {
                 $this->ssh("dnstt-server -gen-key -privkey-file /dnstt/server.key -pubkey-file /dnstt/server.pub", 'dnstt');
             }
@@ -3266,17 +3272,6 @@ DNS-over-HTTPS with IP:
                 }
             }
         }
-        if ($r = fopen('/logs/nginx_tlgrm_access', 'r')) {
-            while (feof($r) === false) {
-                $l = fgets($r);
-                if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
-                    if (!in_array("{$m[1]}/32", $xr)) {
-                        $xr[] = "{$m[1]}/32";
-                    }
-                }
-            }
-            fclose($r);
-        }
         if ($r = fopen('/logs/nginx_doh_access', 'r')) {
             while (feof($r) === false) {
                 $l = fgets($r);
@@ -3660,8 +3655,13 @@ DNS-over-HTTPS with IP:
 
     public function cleanLogs($ip, $nodelete = false)
     {
+        // drop lines containing $ip without passing it to a shell
         foreach ($this->logs as $v) {
-            exec("sed -i '/$ip/d' /logs/$v");
+            $f = "/logs/$v";
+            if (is_file($f) && $ip !== '') {
+                $lines = file($f) ?: [];
+                file_put_contents($f, implode('', array_filter($lines, fn($l) => strpos($l, $ip) === false)));
+            }
         }
         if (empty($nodelete)) {
             $this->delete($this->input['from'], $this->input['message_id']);
@@ -3671,15 +3671,6 @@ DNS-over-HTTPS with IP:
     public function syncDeny()
     {
         $pac = $this->getPacConf();
-        if ($r = fopen('/logs/nginx_tlgrm_access', 'r')) {
-            while (feof($r) === false) {
-                $l = fgets($r);
-                if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
-                    $xr[$m[1]] = true;
-                }
-            }
-            fclose($r);
-        }
         $text = '';
         if (!empty($xr)) {
             foreach (array_keys($xr) as $v) {
@@ -3948,7 +3939,7 @@ DNS-over-HTTPS with IP:
         $clients = $this->getClientsOc();
         foreach ($clients as $k => $v) {
             if ($i == $k) {
-                $this->ssh("ocpasswd -c /etc/ocserv/ocserv.passwd -d $v", 'oc');
+                $this->ssh('ocpasswd -c /etc/ocserv/ocserv.passwd -d ' . escapeshellarg($v), 'oc');
                 break;
             }
         }
@@ -3981,7 +3972,7 @@ DNS-over-HTTPS with IP:
     public function addocus($user)
     {
         $pac = $this->getPacConf();
-        $this->ssh("echo '{$pac['ocserv']}' | ocpasswd -c /etc/ocserv/ocserv.passwd $user", 'oc');
+        $this->ssh('echo ' . escapeshellarg($pac['ocserv']) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($user), 'oc');
         $this->menu('oc');
     }
 
@@ -4187,7 +4178,7 @@ DNS-over-HTTPS with IP:
 
     public function saveTemplate($name, $type, $json)
     {
-        if (json_decode($json, true) === false) {
+        if (!is_array(json_decode($json, true))) {
             return [
                 'status'  => false,
                 'message' => 'wrong format',
@@ -4668,6 +4659,11 @@ DNS-over-HTTPS with IP:
             return;
         }
 
+        // the key goes into a sed expression: WARP+ keys are letters, digits and dashes
+        if (!empty($key) && !preg_match('~^[A-Za-z0-9-]{1,64}$~', $key)) {
+            $this->send($chat, 'wrong license key');
+            return;
+        }
         if (!empty($key)) {
             $c['warp'] = $key;
             // Заменяем ключ в wgcf-account.toml
@@ -5536,6 +5532,7 @@ DNS-over-HTTPS with IP:
     public function createSrs(string $name, array $rules)
     {
         $rules = $this->cleanEmptyKeys($rules);
+        $name = preg_replace('~[^A-Za-z0-9_.-]~', '', $name) ?: 'ruleset';
         header("Content-Disposition: attachment; filename=$name.srs");
         header('Content-Type: application/binary');
         $f = "/tmp/$name" . time() . rand(1, 100);
@@ -5561,7 +5558,7 @@ DNS-over-HTTPS with IP:
             'version' => 1,
             'rules'   => $rules ?: [],
         ]));
-        exec("sing-box rule-set compile $f");
+        exec('sing-box rule-set compile ' . escapeshellarg($f));
         echo file_get_contents("$f.srs");
         unlink($f);
         unlink("$f.srs");
@@ -5632,13 +5629,24 @@ DNS-over-HTTPS with IP:
         $this->ssh("nginx -s reload 2>&1", 'up');
     }
 
+    /**
+     * Cookie value that opens the AdGuard panel. Separate from the path hash,
+     * which every subscriber sees in their links.
+     */
+    public function getAdguardCookie(): string
+    {
+        return hash_hmac('sha256', 'adguard-cookie', $this->key);
+    }
+
     public function getHashBot($notset = false)
     {
         $p = $this->getPacConf();
         if (!empty($p['hashbot'])) {
             return $p['hashbot'];
         }
-        $p['hashbot'] = substr(hash('sha256', $this->key), 0, 8);
+        // secret path part for /pac, /webapp, /adguard, /ws: 128 bits, derived
+        // from the bot token (older installs keep their stored 8-char value)
+        $p['hashbot'] = substr(hash_hmac('sha256', 'path', $this->key), 0, 32);
         if (empty($notset)) {
             $this->setPacConf($p);
         }
@@ -5658,12 +5666,13 @@ DNS-over-HTTPS with IP:
                 $template = preg_replace('~#-domain.+?#-domain~s', $this->uncomment($v, 'domain'), $template, 1);
             }
         }
-        $h = $this->getHashBot();
-        $s = empty($conf['adgbrowser']) ? '' : '#';
+        $h  = $this->getHashBot();
+        $ac = $this->getAdguardCookie();
+        $s  = empty($conf['adgbrowser']) ? '' : '#';
         $r = <<<CONF
         location /adguard/ {
                 access_log /logs/nginx_adguard_access;
-                if (\$cookie_c != "$h") {
+                if (\$cookie_c != "$ac") {
                     $s rewrite .* /webapp redirect;
                 }
                 proxy_pass http://ad/;
