@@ -487,7 +487,7 @@ class Bot
         }
     }
 
-    public function restartXray($c, $norestart = false)
+    public function restartXray($c, $norestart = false, $rename = null)
     {
         $c['inbounds'][0]['settings']['clients'] = array_values($c['inbounds'][0]['settings']['clients']);
         $c['log']['access'] = '/logs/xray';
@@ -559,33 +559,32 @@ class Bot
             "statsOutboundDownlink" => true
         ];
         if (empty($norestart)) {
-            $this->collectSession();
-            file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            $this->ssh('pkill xray', 'xr');
-            // not without the egress filter (see scripts/start_xray.sh)
-            $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray.json > /dev/null 2>&1 &', 'xr');
+            // Xray's counters start from zero after the restart. In one locked
+            // step (the cron loop updates the same stats): latest counters
+            // under the running config's names, into the totals, the renamed
+            // user's record to the new name, new config, restart.
+            $this->updateXrayStats(function ($p) use ($c, $rename) {
+                $running = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
+                if (($cnt = $this->xrayCounters()) !== null) {
+                    $p = $this->applyCounters($p, $cnt, $running);
+                }
+                $p = $this->sessionToGlobal($p);
+                if ($rename && isset($p['users'][$rename[0]])) {
+                    $p['users'][$rename[1]] = $p['users'][$rename[0]];
+                    unset($p['users'][$rename[0]]);
+                }
+                // users no longer in the config (deleted) leave the stats
+                $emails     = array_map(fn($e) => (string) ($e['email'] ?? ''), $c['inbounds'][0]['settings']['clients'] ?? []);
+                $p['users'] = array_intersect_key($p['users'] ?? [], array_flip($emails));
+                file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $this->ssh('pkill xray', 'xr');
+                // not without the egress filter (see scripts/start_xray.sh)
+                $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray.json > /dev/null 2>&1 &', 'xr');
+                return $p;
+            });
         } else {
             file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         }
-    }
-
-    public function collectSession() {
-        $p = $this->getXrayStats();
-        $p['global'] = [
-            'download' => $p['global']['download'] + $p['session']['download'],
-            'upload'   => $p['global']['upload'] + $p['session']['upload'],
-        ];
-        $p['session'] = [
-            'download' => 0,
-            'upload'   => 0,
-        ];
-        foreach ($p['users'] ?? [] as $k => $v) {
-            $p['users'][$k]['global']['download']  += $v['session']['download'];
-            $p['users'][$k]['session']['download']  = 0;
-            $p['users'][$k]['global']['upload']    += $v['session']['upload'];
-            $p['users'][$k]['session']['upload']    = 0;
-        }
-        $this->setXrayStats($p);
     }
 
     public function setLang($lang)
@@ -883,41 +882,104 @@ class Bot
         }
     }
 
-    public function xrayStatsUser()
+    /**
+     * Traffic counters of the running Xray, one query for all of them.
+     * Users are keyed by name (the counter name in Xray), not by position in
+     * the client list: deleting a user must not shift the others' traffic.
+     * session = counters since Xray started; global = earlier sessions.
+     */
+    public function xrayStatsUser($force = false)
     {
-        if (empty($this->time_xray_stats) || time() - $this->time_xray_stats > 60) {
-            $this->time_xray_stats = time();
-            try {
-                $x  = $this->getXray();
-                $td = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name "inbound>>>vless_tls>>>traffic>>>downlink" 2>&1', 'xr'), true)['stat']['value'] ?: 0;
-                $tu = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name "inbound>>>vless_tls>>>traffic>>>uplink" 2>&1', 'xr'), true)['stat']['value'] ?: 0;
-                $p  = $this->getXrayStats();
-                $p['session'] = [
-                    'download' => $td,
-                    'upload'   => $tu,
-                ];
-                if (!empty($users = $x['inbounds'][0]['settings']['clients'])) {
-                    $tmp = [];
-                    foreach ($users as $k => $v) {
-                        $d = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name ' . escapeshellarg("user>>>{$v['email']}>>>traffic>>>downlink") . ' 2>&1', 'xr'), true)['stat']['value'] ?: 0;
-                        $u = json_decode($this->ssh('xray api stats --server=127.0.0.1:8080 -name ' . escapeshellarg("user>>>{$v['email']}>>>traffic>>>uplink") . ' 2>&1', 'xr'), true)['stat']['value'] ?: 0;
-                        $tmp[$k] = [
-                            'session' => [
-                                'download' => $d,
-                                'upload'   => $u,
-                            ],
-                            'global' => [
-                                'download' => $p['users'][$k]['global']['download'],
-                                'upload'   => $p['users'][$k]['global']['upload'],
-                            ]
-                        ];
-                    }
-                    $p['users'] = $tmp;
-                }
-                $this->setXrayStats($p);
-            } catch (\Throwable $th) {
-            }
+        if (!$force && !empty($this->time_xray_stats) && time() - $this->time_xray_stats <= 60) {
+            return;
         }
+        $this->time_xray_stats = time();
+        try {
+            // counters and names read under the lock: a restart in between
+            // would make them stale (already moved into the totals)
+            $this->updateXrayStats(function ($p) {
+                if (($cnt = $this->xrayCounters()) === null) {
+                    return $p; // Xray not running: keep the last values
+                }
+                $emails = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
+                return $this->applyCounters($p, $cnt, $emails);
+            });
+        } catch (\Throwable $th) {
+        }
+    }
+
+    // all counters of the running Xray by name, null when it does not answer
+    public function xrayCounters(): ?array
+    {
+        $out = json_decode($this->ssh('xray api statsquery --server=127.0.0.1:8080 -pattern "" 2>/dev/null', 'xr'), true);
+        if (!is_array($out)) {
+            return null;
+        }
+        $cnt = [];
+        foreach ($out['stat'] ?? [] as $v) {
+            // a counter with value 0 comes without "value"
+            $cnt[$v['name'] ?? ''] = (int) ($v['value'] ?? 0);
+        }
+        return $cnt;
+    }
+
+    // counters into the stats record: session = what Xray counted since start
+    public function applyCounters(array $p, array $cnt, array $emails): array
+    {
+        $p['session'] = [
+            'download' => $cnt['inbound>>>vless_tls>>>traffic>>>downlink'] ?? 0,
+            'upload'   => $cnt['inbound>>>vless_tls>>>traffic>>>uplink'] ?? 0,
+        ];
+        foreach ($emails as $e) {
+            $p['users'][$e]['session'] = [
+                'download' => $cnt["user>>>$e>>>traffic>>>downlink"] ?? 0,
+                'upload'   => $cnt["user>>>$e>>>traffic>>>uplink"] ?? 0,
+            ];
+            $p['users'][$e]['global'] ??= ['download' => 0, 'upload' => 0];
+        }
+        return $p;
+    }
+
+    // session into global for everyone (right before Xray restarts)
+    public function sessionToGlobal(array $p): array
+    {
+        $p['global'] = [
+            'download' => ($p['global']['download'] ?? 0) + ($p['session']['download'] ?? 0),
+            'upload'   => ($p['global']['upload'] ?? 0) + ($p['session']['upload'] ?? 0),
+        ];
+        $p['session'] = ['download' => 0, 'upload' => 0];
+        foreach ($p['users'] ?? [] as $k => $v) {
+            $p['users'][$k]['global']['download'] = ($v['global']['download'] ?? 0) + ($v['session']['download'] ?? 0);
+            $p['users'][$k]['global']['upload']   = ($v['global']['upload'] ?? 0) + ($v['session']['upload'] ?? 0);
+            $p['users'][$k]['session']            = ['download' => 0, 'upload' => 0];
+        }
+        return $p;
+    }
+
+    /**
+     * Read-modify-write of xray.stats under a lock: the bot (php) and the
+     * cron loop (service) both update it.
+     */
+    public function updateXrayStats(callable $fn)
+    {
+        $l = fopen('/config/xray.stats.lock', 'c');
+        flock($l, LOCK_EX);
+        try {
+            $this->setXrayStats($fn($this->getXrayStats()));
+        } finally {
+            flock($l, LOCK_UN);
+            fclose($l);
+        }
+    }
+
+    // traffic of client $c (from the Xray config): [download, upload]
+    public function userTraffic(array $st, $c): array
+    {
+        $u = $st['users'][(string) ($c['email'] ?? '')] ?? [];
+        return [
+            ($u['global']['download'] ?? 0) + ($u['session']['download'] ?? 0),
+            ($u['global']['upload'] ?? 0) + ($u['session']['upload'] ?? 0),
+        ];
     }
 
     public function autoAnalyzeLogs()
@@ -3756,12 +3818,10 @@ DNS-over-HTTPS with IP:
     public function delxr($i)
     {
         $r  = $this->getXray();
-        $st = $this->getXrayStats();
         foreach ($r['inbounds'][0]['settings']['clients'] as $k => $v) {
             if ($i == $k) {
+                // its traffic leaves the stats in restartXray (by name)
                 unset($r['inbounds'][0]['settings']['clients'][$k]);
-                unset($st['users'][$k]);
-                $this->setXrayStats($st);
                 $this->restartXray($r);
                 $this->adguardXrayClients();
                 break;
@@ -3849,16 +3909,42 @@ DNS-over-HTTPS with IP:
             $this->send($this->input['chat'], 'wrong name: letters, digits, space . _ @ -');
             return $this->userXr($i);
         }
-        $c = $this->getXray();
+        $c   = $this->getXray();
+        $old = (string) ($c['inbounds'][0]['settings']['clients'][$i]['email'] ?? '');
+        foreach ($c['inbounds'][0]['settings']['clients'] as $k => $v) {
+            if ($k != $i && ($v['email'] ?? '') === $name) {
+                $this->send($this->input['chat'], "user $name already exists");
+                return $this->userXr($i);
+            }
+        }
+        if ($old === $name) {
+            return $this->userXr($i);
+        }
+        // Xray counts traffic by name: the record moves to the new name
         $c['inbounds'][0]['settings']['clients'][$i]['email'] = $name;
-        $this->restartXray($c);
+        $this->restartXray($c, false, [$old, $name]);
         $this->adguardXrayClients();
         $this->userXr($i);
     }
 
     public function getXrayStats()
     {
-        return json_decode(file_get_contents('/config/xray.stats'), true) ?: [];
+        $p = json_decode(@file_get_contents('/config/xray.stats'), true) ?: [];
+        // older versions keyed users by position: map them to names once
+        if (!empty($p['users']) && is_int(array_key_first($p['users']))) {
+            $clients = $this->getXray()['inbounds'][0]['settings']['clients'] ?? [];
+            $users   = [];
+            foreach ($p['users'] as $k => $v) {
+                if (is_int($k) && isset($clients[$k])) {
+                    $users[(string) ($clients[$k]['email'] ?? '')] = $v;
+                } elseif (is_string($k)) {
+                    $users[$k] = $v;
+                }
+            }
+            $p['users'] = $users;
+            $this->setXrayStats($p);
+        }
+        return $p;
     }
 
     public function setXrayStats($x)
@@ -3868,16 +3954,24 @@ DNS-over-HTTPS with IP:
 
     public function resetXrUser($i)
     {
-        $c = $this->getXrayStats();
-        unset($c['users'][$i]);
-        $this->restartXray($this->getXray());
+        $e = (string) ($this->getXray()['inbounds'][0]['settings']['clients'][$i]['email'] ?? '');
+        $this->updateXrayStats(function ($p) use ($e) {
+            foreach (['downlink', 'uplink'] as $d) {
+                $this->ssh('xray api stats --server=127.0.0.1:8080 -reset -name ' . escapeshellarg("user>>>$e>>>traffic>>>$d") . ' >/dev/null 2>&1', 'xr');
+            }
+            $p['users'][$e] = [
+                'session' => ['download' => 0, 'upload' => 0],
+                'global'  => ['download' => 0, 'upload' => 0],
+            ];
+            return $p;
+        });
         $this->userXr($i);
     }
 
     public function resetXrStats($nomenu = false)
     {
         $this->restartXray($this->getXray());
-        $this->setXrayStats([]);
+        $this->updateXrayStats(fn($p) => []);
         if (empty($nomenu)) {
             $this->xray();
         }
@@ -4292,8 +4386,7 @@ DNS-over-HTTPS with IP:
         $page    = $page == -2 ? $all - 1 : $page;
         $clients = $page != -1 ? array_slice($clients, $page * $this->limit, $this->limit, true) : $clients;
         foreach ($clients as $k => $v) {
-            $download = $this->getBytes($st['users'][$k]['global']['download'] + $st['users'][$k]['session']['download']);
-            $upload   = $this->getBytes($st['users'][$k]['global']['upload'] + $st['users'][$k]['session']['upload']);
+            [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $v));
             $data[]   = [
                 [
                     'text'          => "{$v['email']} (↓$download  ↑$upload)",
@@ -4706,8 +4799,7 @@ DNS-over-HTTPS with IP:
         $text[] = "\nMihomo:\n<pre><code>$cl</code></pre>";
 
         $st       = $this->getXrayStats();
-        $download = $this->getBytes($st['users'][$i]['global']['download'] + $st['users'][$i]['session']['download']);
-        $upload   = $this->getBytes($st['users'][$i]['global']['upload'] + $st['users'][$i]['session']['upload']);
+        [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $c));
         $data[]   = [
             [
                 'text'          => $this->i18n('reset stats') . ": ↓$download  ↑$upload",
@@ -4809,8 +4901,7 @@ DNS-over-HTTPS with IP:
             exit;
         }
         $suburl   = "<a href='$scheme://{$domain}/pac$hash/sub?id={$uid}'>subscription</a>";
-        $download = $this->getBytes($st['users'][$k]['global']['download'] + $st['users'][$k]['session']['download']);
-        $upload   = $this->getBytes($st['users'][$k]['global']['upload'] + $st['users'][$k]['session']['upload']);
+        [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $client ?? []));
         $singbox  = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
             't' => 'si',
