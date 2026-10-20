@@ -7,67 +7,47 @@
         {
             "type": "tun",
             "tag": "tun-in",
-            "domain_strategy": "prefer_ipv4",
-            "interface_name": "sing-tun",
             "address": [
-                "172.19.0.1\/30"
+                "172.19.0.1/28",
+                "fdfe:dcba:9876::1/126"
             ],
             "mtu": 1400,
             "auto_route": true,
             "strict_route": true,
-            "endpoint_independent_nat": false,
-            "stack": "mixed",
-            "platform": {
-                "http_proxy": {
-                    "enabled": false,
-                    "server": "127.0.0.1",
-                    "server_port": 2080
-                }
-            }
-        },
-        {
-            "type": "mixed",
-            "tag": "in",
-            "listen": "127.0.0.1",
-            "listen_port": 2080
+            "stack": "mixed"
         }
     ],
     "dns": {
         "servers": [
             {
-                "tag": "dns_direct",
-                "address": "~dns~",
-                "address_resolver": "dns-remote",
-                "strategy": "prefer_ipv4",
-                "detour": "direct"
+                "type": "hosts",
+                "tag": "dns-hosts",
+                "predefined": {
+                    "~domain~": "~ip~"
+                }
             },
             {
-                "tag": "dns-remote",
-                "address": "tcp:\/\/8.8.8.8",
-                "address_strategy": "prefer_ipv4",
-                "strategy": "prefer_ipv4",
-                "detour": "direct"
+                "type": "https",
+                "tag": "dns_direct",
+                "server": "~domain~",
+                "path": "~dnspath~",
+                "domain_resolver": "dns-hosts"
             }
         ],
-        "rules": [
-            {
-                "outbound": "any",
-                "server": "dns-direct",
-                "disable_cache": false
-            }
-        ],
-        "strategy": "ipv4_only",
-        "independent_cache": true
+        "final": "dns_direct",
+        "strategy": "ipv4_only"
     },
     "outbounds": [
         {
-            "flow": "xtls-rprx-vision",
-            "packet_encoding": "",
+            "type": "vless",
+            "tag": "~outbound~",
             "server": "~domain~",
             "server_port": 443,
+            "domain_resolver": "dns-hosts",
+            "uuid": "~uid~",
+            "flow": "xtls-rprx-vision",
             "tls": {
                 "enabled": true,
-                "insecure": false,
                 "reality": {
                     "enabled": true,
                     "public_key": "~public_key~",
@@ -78,11 +58,7 @@
                     "enabled": true,
                     "fingerprint": "chrome"
                 }
-            },
-            "uuid": "~uid~",
-            "type": "vless",
-            "domain_strategy": "ipv4_only",
-            "tag": "~outbound~"
+            }
         },
         {
             "type": "direct",
@@ -91,7 +67,10 @@
     ],
     "route": {
         "auto_detect_interface": true,
-        "override_android_vpn": true,
+        "default_domain_resolver": {
+            "server": "dns_direct",
+            "strategy": "ipv4_only"
+        },
         "rules": [
             {
                 "action": "sniff"
@@ -101,14 +80,28 @@
                 "action": "hijack-dns"
             },
             {
-                "inbound": "in",
-                "action": "resolve",
-                "strategy": "prefer_ipv4"
+                "domain": "~domain~",
+                "action": "route",
+                "outbound": "direct"
             },
             {
-                "inbound": "in",
-                "action": "sniff",
-                "timeout": "1s"
+                "action": "resolve",
+                "strategy": "ipv4_only"
+            },
+            {
+                "addruleset": true,
+                "createruleset": [
+                    {
+                        "name": "block",
+                        "interval": "30s",
+                        "rules": [
+                            {
+                                "domain_suffix": "~block~"
+                            }
+                        ]
+                    }
+                ],
+                "action": "reject"
             },
             {
                 "addruleset": true,
@@ -119,7 +112,7 @@
                 "createruleset": [
                     {
                         "name": "pac",
-                        "interval": "60s",
+                        "interval": "30s",
                         "rules": [
                             {
                                 "domain_suffix": "~pac~"
@@ -134,7 +127,7 @@
                 "createruleset": [
                     {
                         "name": "subnet",
-                        "interval": "60s",
+                        "interval": "30s",
                         "rules": [
                             {
                                 "ip_cidr": "~subnet~"
@@ -148,53 +141,8 @@
                 "addruleset": true,
                 "createruleset": [
                     {
-                        "name": "package",
-                        "interval": "60s",
-                        "rules": [
-                            {
-                                "package_name": "~package~"
-                            }
-                        ]
-                    }
-                ],
-                "outbound": "~outbound~"
-            },
-            {
-                "addruleset": true,
-                "createruleset": [
-                    {
-                        "name": "process",
-                        "interval": "60s",
-                        "rules": [
-                            {
-                                "process_name": "~process~"
-                            }
-                        ]
-                    }
-                ],
-                "outbound": "~outbound~"
-            },
-            {
-                "addruleset": true,
-                "createruleset": [
-                    {
-                        "name": "block",
-                        "interval": "60s",
-                        "rules": [
-                            {
-                                "domain_suffix": "~block~"
-                            }
-                        ]
-                    }
-                ],
-                "action": "reject"
-            },
-            {
-                "addruleset": true,
-                "createruleset": [
-                    {
                         "name": "warp",
-                        "interval": "60s",
+                        "interval": "30s",
                         "rules": [
                             {
                                 "domain_suffix": "~warp~"
@@ -206,5 +154,12 @@
             }
         ],
         "final": "direct"
+    },
+    "experimental": {
+        "cache_file": {
+            "enabled": true,
+            "path": "cache.db",
+            "store_dns": true
+        }
     }
 }
