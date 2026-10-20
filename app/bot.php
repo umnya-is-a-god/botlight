@@ -472,6 +472,9 @@ class Bot
             case preg_match('~^/delOverrideHtml$~', $this->input['callback'], $m):
                 $this->delOverrideHtml();
                 break;
+            case preg_match('~^/backupPassword$~', $this->input['callback'], $m):
+                $this->backupPassword();
+                break;
             case preg_match('~^/export$~', $this->input['callback'], $m):
                 $this->sendBackup();
                 break;
@@ -490,7 +493,11 @@ class Bot
     public function restartXray($c, $norestart = false, $rename = null)
     {
         $c['inbounds'][0]['settings']['clients'] = array_values($c['inbounds'][0]['settings']['clients']);
-        $c['log']['access'] = '/logs/xray';
+        // Xray's access log lists every site each user opens: kept only while
+        // the IP limit needs it (it is read to count IPs per user). Error log
+        // at warning: "info" also prints every destination.
+        $c['log']['access']   = empty($this->getPacConf()['ip_limit']) ? 'none' : '/logs/xray';
+        $c['log']['loglevel'] = 'warning';
         foreach ($c['inbounds'] as $v) {
             if ($v['tag'] == 'api') {
                 $api = true;
@@ -1140,16 +1147,89 @@ class Bot
     }
 
 
+    /**
+     * Backups hold every key and password of the server and go to Telegram,
+     * so they are encrypted: AES-256-GCM (authenticated) with a key from the
+     * backup password via PBKDF2-SHA256.
+     */
+    public function encryptBackup(string $plain, string $pass): string
+    {
+        $salt = random_bytes(16);
+        $iv   = random_bytes(12);
+        $iter = 600000;
+        $key  = hash_pbkdf2('sha256', $pass, $salt, $iter, 32, true);
+        $data = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+        return json_encode([
+            'vpnbot_backup' => 1,
+            'kdf'           => 'pbkdf2-sha256',
+            'iter'          => $iter,
+            'salt'          => base64_encode($salt),
+            'cipher'        => 'aes-256-gcm',
+            'iv'            => base64_encode($iv),
+            'tag'           => base64_encode($tag),
+            'data'          => base64_encode($data),
+        ]);
+    }
+
+    // null: wrong password or damaged file
+    public function decryptBackup(array $env, string $pass): ?string
+    {
+        if (($env['cipher'] ?? '') !== 'aes-256-gcm' || ($env['kdf'] ?? '') !== 'pbkdf2-sha256') {
+            return null;
+        }
+        $iter  = max(100000, min(10000000, (int) ($env['iter'] ?? 0)));
+        $key   = hash_pbkdf2('sha256', $pass, (string) base64_decode($env['salt'] ?? ''), $iter, 32, true);
+        $plain = openssl_decrypt((string) base64_decode($env['data'] ?? ''), 'aes-256-gcm', $key, OPENSSL_RAW_DATA, (string) base64_decode($env['iv'] ?? ''), (string) base64_decode($env['tag'] ?? ''));
+        return $plain === false ? null : $plain;
+    }
+
+    // $file: also keep a plain copy there (local, for the bot's own update)
     public function sendBackup($file = false)
     {
         require __DIR__ . '/config.php';
         $conf = $this->getPacConf();
-        $bot  = preg_replace('~[\W]~iu', '_', $this->request('getMyName', [])['result']['name']);
         $json = $this->export();
         if (!empty($file)) {
             file_put_contents($file, $json);
         }
-        $this->upload("{$bot}_export_" . date('d_m_Y_H_i') . '.json', $json, $c['admin'][0]);
+        if (empty($conf['backup_password'])) {
+            $this->send($c['admin'][0], 'backup not sent: set a backup password in Settings, backups are only sent encrypted');
+            return;
+        }
+        $bot = preg_replace('~[\W]~iu', '_', $this->request('getMyName', [])['result']['name']);
+        $this->sendFile($c['admin'][0], new CURLStringFile($this->encryptBackup($json, $conf['backup_password']), "{$bot}_backup_" . date('d_m_Y_H_i') . '.enc.json', 'application/json'));
+    }
+
+    public function backupPassword()
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} backup password (8-128 characters; \"-\" removes it)",
+            $this->input['message_id'],
+            reply: 'backup password',
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => 'setBackupPassword',
+            'args'           => [],
+        ];
+    }
+
+    public function setBackupPassword($text)
+    {
+        $text = trim((string) $text);
+        $c    = $this->getPacConf();
+        if ($text === '-') {
+            unset($c['backup_password']);
+        } elseif (preg_match('~^[^\x00-\x1f\x7f]{8,128}$~uD', $text)) {
+            $c['backup_password'] = $text;
+        } else {
+            $this->send($this->input['chat'], 'wrong password: 8-128 printable characters');
+            return $this->menu('config');
+        }
+        $this->setPacConf($c);
+        $this->menu('config');
     }
 
     /**
@@ -1317,13 +1397,44 @@ class Bot
         $this->importFile();
     }
 
-    public function importFile($file = false)
+    // reply with the password for an encrypted backup ($fileId from the prompt)
+    public function importWithPassword($text, $fileId)
+    {
+        $this->input['file_id'] = $fileId;
+        $this->importFile(false, trim((string) $text));
+    }
+
+    public function importFile($file = false, $password = null)
     {
         if (!empty($file)) {
             $json = json_decode(file_get_contents($file), true);
         } else {
             $r    = $this->request('getFile', ['file_id' => $this->input['file_id']]);
             $json = json_decode(file_get_contents($this->file . $r['result']['file_path']), true);
+        }
+        if (is_array($json) && !empty($json['vpnbot_backup'])) {
+            // encrypted: the password set on this server, else the one typed
+            $pass  = $password ?? ($this->getPacConf()['backup_password'] ?? '');
+            $plain = $pass !== '' ? $this->decryptBackup($json, $pass) : null;
+            if ($plain === null) {
+                if ($password !== null) {
+                    $this->send($this->input['chat'], 'wrong backup password');
+                }
+                $r = $this->send(
+                    $this->input['chat'],
+                    "@{$this->input['username']} backup password",
+                    $this->input['message_id'],
+                    reply: 'backup password',
+                );
+                $_SESSION['reply'][$r['result']['message_id']] = [
+                    'start_message'  => $this->input['message_id'],
+                    'start_callback' => $this->input['callback_id'],
+                    'callback'       => 'importWithPassword',
+                    'args'           => [$this->input['file_id']],
+                ];
+                return;
+            }
+            $json = json_decode($plain, true);
         }
         if (empty($json) || !is_array($json)) {
             $this->answer($this->input['callback_id'], 'error', true);
@@ -1413,14 +1524,7 @@ class Bot
 
     public function upload($name, $code, $chat = false)
     {
-        $path = "/logs/$name";
-        file_put_contents($path, $code);
-        $r = $this->sendFile(
-            $chat ?: $this->input['chat'],
-            curl_file_create($path),
-        );
-        unlink($path);
-        return $r;
+        return $this->sendFile($chat ?: $this->input['chat'], new CURLStringFile($code, $name));
     }
 
     public function reply()
@@ -3019,6 +3123,11 @@ DNS-over-HTTPS with IP:
             $c['ip_count'] = (int) $limit[1] ?: 1;
         }
         $this->setPacConf($c);
+        // the access log goes on/off with the limit
+        $this->restartXray($this->getXray());
+        if (empty($c['ip_limit'])) {
+            @file_put_contents('/logs/xray', '');
+        }
         $this->xray();
     }
 
@@ -4579,7 +4688,11 @@ DNS-over-HTTPS with IP:
             if (!empty($this->getPacConf()['ip_limit'])) {
                 $this->pool = [];
                 $log = '/logs/xray';
-                $r   = fopen($log, 'r');
+                // Xray creates the log after its restart with the limit on
+                if (!($r = @fopen($log, 'r'))) {
+                    sleep(10);
+                    continue;
+                }
                 fseek($r, 0, SEEK_END);
                 while (true) {
                     $pac = $this->getPacConf();
@@ -4588,7 +4701,12 @@ DNS-over-HTTPS with IP:
                     }
                     $currentPosition = ftell($r);
                     clearstatcache();
-                    $fileSize = filesize($log);
+                    $fileSize = (int) @filesize($log);
+                    if ($fileSize < $currentPosition) {
+                        // the log was cleaned: read it from the start
+                        fseek($r, 0);
+                        $currentPosition = 0;
+                    }
                     if ($fileSize > $currentPosition) {
                         fseek($r, $currentPosition); // сброс флага feof
                         while (!feof($r)) {
@@ -5970,6 +6088,11 @@ DNS-over-HTTPS with IP:
                 'text'          => $this->i18n('import'),
                 'callback_data' => "/import",
             ],
+            [
+                // backups are only sent encrypted with this password
+                'text'          => '🔐 ' . $this->i18n(!empty($conf['backup_password']) ? 'on' : 'off'),
+                'callback_data' => "/backupPassword",
+            ],
         ];
         $backup = array_filter(explode('/', (string) ($conf['backup'] ?? '')));
         if (!empty($backup)) {
@@ -6542,13 +6665,10 @@ DNS-over-HTTPS with IP:
         $r   = json_decode($res, true);
         // log failed calls: no answer at all, or Telegram refused the request
         if (!is_array($r) || empty($r['ok'])) {
-            file_put_contents('/logs/requests_error', date('Y-m-d H:i:s ') . var_export([
-                'r' => [
-                    'method' => $method,
-                    'data'   => $data,
-                ],
-                'a' => $res === false ? 'curl: ' . curl_error($ch) : $res,
-            ], true) . "\n", FILE_APPEND);
+            // method and Telegram's answer only: the request itself may carry
+            // links, keys or backups
+            $why = $res === false ? 'curl: ' . curl_error($ch) : (is_array($r) ? ($r['error_code'] ?? '') . ' ' . ($r['description'] ?? '') : substr((string) $res, 0, 200));
+            file_put_contents('/logs/requests_error', date('Y-m-d H:i:s ') . "$method: $why\n", FILE_APPEND);
         }
         return $r;
     }

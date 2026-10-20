@@ -1,3 +1,6 @@
+# current AdGuard schema: without it AdGuard runs its upgrade chain from
+# schema 0, which resets the query log settings and nests bootstrap_dns
+schema_version: 34
 http:
   address: 0.0.0.0:80
 users:
@@ -6,9 +9,15 @@ users:
 dns:
   bind_hosts:
     - 0.0.0.0
+  # encrypted upstreams: the hosting provider does not see the names users
+  # resolve (plain DNS to 1.1.1.1 / 8.8.8.8 is readable on the way)
   upstream_dns:
+    - https://dns.cloudflare.com/dns-query
+    - https://dns.google/dns-query
+  bootstrap_dns:
     - 1.1.1.1
     - 8.8.8.8
+  anonymize_client_ip: true
   trusted_proxies:
     - 10.10.0.0/24
     - 127.0.0.0/8
@@ -19,5 +28,15 @@ tls:
 filtering:
   safe_search:
     enabled: false
+# no query log: it would keep every name each user resolves (the panel can
+# turn it on for a while to see why a site is blocked)
+querylog:
+  enabled: false
+  file_enabled: false
+  interval: 24h
+  size_memory: 1000
+statistics:
+  enabled: true
+  interval: 24h
 log:
   file: /logs/adguard

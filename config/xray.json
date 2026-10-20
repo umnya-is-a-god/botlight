@@ -4,8 +4,7 @@
             "port": 443,
             "protocol": "vless",
             "settings": {
-                "clients": [
-                ],
+                "clients": [],
                 "decryption": "none"
             },
             "sniffing": {
@@ -35,8 +34,8 @@
         }
     ],
     "log": {
-        "loglevel": "info",
-        "access": "/logs/xray"
+        "loglevel": "warning",
+        "access": "none"
     },
     "outbounds": [
         {
