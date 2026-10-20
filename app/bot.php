@@ -4711,8 +4711,10 @@ DNS-over-HTTPS with IP:
         }
         $this->ssh("sed -i '/^Address.*:/d' /etc/warp/wgcf-profile.conf", 'wp');
         $this->ssh("sed -i '/^AllowedIPs.*::/d' /etc/warp/wgcf-profile.conf", 'wp');
+        // see start_wp.sh: resolvconf cannot work in the container
+        $this->ssh("sed -i '/^DNS *=/d' /etc/warp/wgcf-profile.conf", 'wp');
 
-        $started = $step('starting warp', 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1 | grep -v "skip sysctl"); ec=${PIPESTATUS[0]}; [ "$ec" -ne 0 ] && printf "%s" "$out"; exit $ec', 'wp');
+        $started = $step('starting warp', 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl"; exit $ec', 'wp');
 
         if (!$started) {
             $this->send($chat, $log);

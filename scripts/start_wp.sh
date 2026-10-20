@@ -47,6 +47,11 @@ if [ ! -f "$WGCF_CONF" ]; then
     sed -i '/^AllowedIPs.*::/d' "$WGCF_CONF"
 fi
 
+# no DNS line: wg-quick would call resolvconf, which refuses to touch the
+# resolv.conf Docker manages (Alpine 3.24) and the interface is torn down.
+# Names are resolved by Docker DNS anyway.
+sed -i '/^DNS *=/d' "$WGCF_CONF"
+
 echo "[warp] Starting WireGuard (WARP)..."
 wg-quick up "$WGCF_CONF"
 
