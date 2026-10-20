@@ -1,29 +1,50 @@
-telegram bot to manage servers (inside the bot)
+# lightweightbot
 
-- VLESS (Reality OR Websocket)
-- NaiveProxy
-- OpenConnect
-- Wireguard
-- Amnezia
-- AdguardHome
-- MTProto
-- PAC
-- automatic ssl
+Облегчённая версия [mercurykd/vpnbot](https://github.com/mercurykd/vpnbot) (ветка `dev`). Оставлены только Vless (Xray), OpenConnect, AdGuard, Warp, PAC и DNSTT.
+
+### Удалено
+
+* Контейнеры WireGuard ×2 (`wg`, `wg1`), NaiveProxy (`np`), MTProto (`tg`), Shadowsocks (`ss` + `proxy`), Hysteria (`hy`). Вместе с ними их меню, кнопки, статусы, порты, бэкап, скрипты, dockerfile и конфиги.
+* Связка nginx с удалёнными сервисами: upstream `np:443`, `location /v2ray`. certbot больше не запрашивает сертификат на naive-поддомен.
+* Формат v2ray/xray-JSON: шаблон, кнопки, импорт в v2rayNG и Streisand. Ссылки hiddify и karing.
+* HWID-лимит целиком.
+* AWG-ссылка для Vless, Settings → Ports для удалённых сервисов.
+* В меню маршрутов Vless — списки subnet, process, package.
+* Мёртвый код: около 130 методов, около 20 маршрутов без кнопок, устаревший `offWarp` для старого клиента Cloudflare, недоделанные списки exclude/reverse/subzones, около 35 строк перевода.
+
+### Изменено
+
+* XHTTP: `xmux` у sing-box и mihomo выровнены (без `max_connections`), значения совпадают с `vless://`-ссылкой.
+* Telegram API: таймауты cURL 5/15 с, бот больше не зависает намертво.
+* sing-box 1.14: `http_client` и `http_clients` вместо `download_detour`.
+* Шаблоны `origin` заменены новыми: sing-box 1.14 и mihomo для Android/Windows, `authentication` = `123:321`.
+* Главное меню: Vless + OpenConnect, AdGuard + PAC, DNSTT + Warp.
+* Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.
+
+### Обновление сервера с исходного vpnbot
+
+Перед `make r` уберите из `docker-compose.override.yml` секции удалённых сервисов (`wg`, `wg1`, `np`, `tg`, `ss`, `proxy`, `hy`), если они там есть.
+
+```shell
+cd /root/vpnbot
+git fetch origin && git reset --hard origin/lightweightbot
+make r
+```
 
 ---
-environment: ubuntu 22.04/24.04, debian 11/12
 
 ## Install:
 
 ```shell
-wget -O- https://raw.githubusercontent.com/mercurykd/vpnbot/master/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY master
+wget -O- https://raw.githubusercontent.com/umnya-is-a-god/vpnbot/master/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY master
 ```
 #### Restart:
 ```shell
+cd /vpnbot
 make r
 ```
 #### autoload:
 ```shell
 crontab -e
-```
 add `@reboot cd /root/vpnbot && make r` and save
+```
