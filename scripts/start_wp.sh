@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 cat /ssh/key.pub > /root/.ssh/authorized_keys

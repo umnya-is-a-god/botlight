@@ -1,3 +1,4 @@
+#!/bin/sh
 cat /ssh/key.pub > /root/.ssh/authorized_keys
 ssh-keygen -A
 

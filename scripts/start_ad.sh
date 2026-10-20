@@ -1,3 +1,4 @@
+#!/bin/sh
 route add -net 10.0.2.0 netmask 255.255.255.0 gw oc
 cat /ssh/key.pub > /root/.ssh/authorized_keys
 ssh-keygen -A

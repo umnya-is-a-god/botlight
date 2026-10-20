@@ -3,7 +3,7 @@ FROM $image
 ARG xray_version
 # The release archive is checked against the SHA-256 published with the
 # same release (.dgst): catches corrupted or swapped downloads.
-RUN apk add openssh openssl jq curl iptables \
+RUN apk add --no-cache openssh openssl jq curl iptables \
     && mkdir /root/.ssh \
     && if [ -z "$xray_version" ] || [ "$xray_version" = latest ]; \
         then url=https://github.com/XTLS/Xray-core/releases/latest/download; \

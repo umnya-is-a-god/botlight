@@ -11,7 +11,7 @@ for pid in $pids; do
     fi
 done
 
-> $pwd/update/pipe
+: > "$pwd/update/pipe"
 # pid lives outside ./update: that folder is writable from the containers
 echo "$$" > $pwd/.update_pid
 last_fetch=0
@@ -72,8 +72,8 @@ do
         tg_draft "launching the bot"
         make start
 
-        > $pwd/update/key
-        > $pwd/update/curl
+        : > "$pwd/update/key"
+        : > "$pwd/update/curl"
 
         curl -s -H "Content-Type: application/json" \
             -X POST "https://$TELEGRAM_API/bot$_key/sendMessage" \

@@ -18,4 +18,4 @@ RUN apk add --no-cache --virtual .build-deps alpine-sdk git \
     && wget -O /usr/bin/wgcf https://github.com/ViRb3/wgcf/releases/download/v$wgcf_version/wgcf_${wgcf_version}_linux_amd64 \
     && echo "$wgcf_sha256  /usr/bin/wgcf" | sha256sum -c - \
     && chmod +x /usr/bin/wgcf \
-    && sed -i 's/sysctl -q net\.ipv4\.conf\.all\.src_valid_mark=1/echo "skip sysctl src_valid_mark"/' $(which wg-quick)
+    && sed -i 's/sysctl -q net\.ipv4\.conf\.all\.src_valid_mark=1/echo "skip sysctl src_valid_mark"/' "$(which wg-quick)"

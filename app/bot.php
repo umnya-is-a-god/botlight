@@ -232,16 +232,16 @@ class Bot
             case preg_match('~^/adguardChBr$~', $this->input['callback'], $m):
                 $this->adguardChBr();
                 break;
-            case preg_match('~^/deleteAll (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/deleteAll (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->deleteAll($m[1]);
                 break;
-            case preg_match('~^/exportList (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/exportList (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->exportList($m[1]);
                 break;
             case preg_match('~^/hidePort (\w+)$~', $this->input['callback'], $m):
                 $this->hidePort($m[1]);
                 break;
-            case preg_match('~^/deleteYes (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/deleteYes (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->deleteYes($m[1]);
                 break;
             case preg_match('~^/pacMenu (\d+)$~', $this->input['callback'], $m):
@@ -406,7 +406,7 @@ class Bot
             case preg_match('~^/addNipdomain$~', $this->input['callback'], $m):
                 $this->addNipdomain();
                 break;
-            case preg_match('~^/(?P<action>change|delete)(?P<typelist>\w+) (?P<arg>\d+)(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/(?P<action>change|delete)(?P<typelist>includelist|blocklist|warplist|rulessetlist|white|deny) (?P<arg>\d+)(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
                 $this->listPacChange($m['typelist'], $m['action'], $m['arg'], $m['page'] ?: 0);
                 break;
             case preg_match('~^/domain$~', $this->input['callback'], $m):
@@ -439,7 +439,7 @@ class Bot
             case preg_match('~^/delTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->delTemplate($m[1], $m[2]);
                 break;
-            case preg_match('~^/downloadOrigin (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/downloadOrigin (sing|clash)$~', $this->input['callback'], $m):
                 $this->downloadOrigin($m[1]);
                 break;
             case preg_match('~^/downloadTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
@@ -463,7 +463,7 @@ class Bot
             case preg_match('~^/selfFakeDomain$~', $this->input['callback'], $m):
                 $this->selfFakeDomain();
                 break;
-            case preg_match('~^/include (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/include (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->include($m[1]);
                 break;
             case preg_match('~^/addOverrideHtml$~', $this->input['callback'], $m):
@@ -475,7 +475,7 @@ class Bot
             case preg_match('~^/import$~', $this->input['callback'], $m):
                 $this->import();
                 break;
-            case preg_match('~^/importList (\w+)$~', $this->input['callback'], $m):
+            case preg_match('~^/importList (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->importList($m[1]);
                 break;
             case !empty($this->input['reply']):
@@ -3500,11 +3500,6 @@ DNS-over-HTTPS with IP:
         $pac['white'] = array_values(array_filter($pac['white'] ?: [], [$this, 'validIpOrCidr']));
         $pac['deny']  = array_values(array_filter($pac['deny'] ?: [], [$this, 'validIpOrCidr']));
         $text = '';
-        if (!empty($xr)) {
-            foreach (array_keys($xr) as $v) {
-                $text .= "allow $v;\n";
-            }
-        }
         if (!empty($pac['white'])) {
             $pac['white'] = array_unique($pac['white']);
             sort($pac['white']);
@@ -3516,7 +3511,7 @@ DNS-over-HTTPS with IP:
             $pac['deny'] = array_unique($pac['deny']);
             sort($pac['deny']);
             foreach ($pac['deny'] as $k => $v) {
-                if (!in_array($v, $pac['white'] ?: []) && !in_array($v, array_keys($xr ?: []))) {
+                if (!in_array($v, $pac['white'] ?: [])) {
                     $text .= "deny $v;\n";
                 } else {
                     unset($pac['deny'][$k]);
@@ -3935,26 +3930,46 @@ DNS-over-HTTPS with IP:
         ];
     }
 
+    /**
+     * Template names go into button data (base64, Telegram allows 64 bytes
+     * per button): short, plain characters, and not the built-in "origin".
+     */
+    public function validTemplateName($name): bool
+    {
+        return is_string($name) && $name !== 'origin' && strlen($name) <= 24
+            && (bool) preg_match('~^[\p{L}\p{N}][\p{L}\p{N} ._-]*$~uD', $name);
+    }
+
     public function addTemplate($n, $type)
     {
-        if (empty($this->input['caption'])) {
-            $this->send($this->input['chat'], 'empty name');
+        if (!$this->validTemplateName($name = trim((string) $this->input['caption']))) {
+            $this->send($this->input['chat'], 'name in the file caption: up to 24 bytes, letters, digits, space . _ -, not "origin"');
+            return;
+        }
+        if (empty($this->input['file_id'])) {
+            $this->send($this->input['chat'], 'send the template as a file');
             return;
         }
         $r    = $this->request('getFile', ['file_id' => $this->input['file_id']]);
         $json = json_decode(file_get_contents($this->file . $r['result']['file_path']), true);
-        if ($json === false) {
+        if (!is_array($json)) {
             $this->send($this->input['chat'], 'wrong format');
             return;
         }
         $pac = $this->getPacConf();
-        $pac["{$type}templates"][$this->input['caption']] = $json;
+        $pac["{$type}templates"][$name] = $json;
         $this->setPacConf($pac);
         $this->templates($type);
     }
 
     public function saveTemplate($name, $type, $json)
     {
+        if (!in_array($type, ['sing', 'clash'], true)) {
+            return ['status' => false, 'message' => 'wrong template type'];
+        }
+        if ($name !== 'origin' && !$this->validTemplateName($name)) {
+            return ['status' => false, 'message' => 'wrong template name'];
+        }
         if (!is_array(json_decode($json, true))) {
             return [
                 'status'  => false,
@@ -3987,6 +4002,10 @@ DNS-over-HTTPS with IP:
 
     public function copyTemplate($name, $type)
     {
+        if (!$this->validTemplateName($name = trim((string) $name))) {
+            $this->send($this->input['chat'], 'name: up to 24 bytes, letters, digits, space . _ -, not "origin"');
+            return $this->templates($type);
+        }
         $pac  = $this->getPacConf();
         $pac["{$type}templates"][$name] = json_decode(file_get_contents("/config/$type.json"), true);
         $this->setPacConf($pac);
@@ -4868,19 +4887,25 @@ DNS-over-HTTPS with IP:
         $c = json_decode($this->replaceTags(json_encode($c), [
             '~outbound~' => $outbound,
         ]), true);
-        foreach ($c['outbounds'] as $k => $v) {
+        foreach ($c['outbounds'] ?? [] as $k => $v) {
             if ($v['tag'] == $outbound) {
                 $index = $k;
                 break;
             }
         }
         if (!isset($index)) {
-            foreach ($c['proxies'] as $k => $v) {
+            foreach ($c['proxies'] ?? [] as $k => $v) {
                 if ($v['name'] == $outbound) {
                     $index = $k;
                     break;
                 }
             }
+        }
+        if (!isset($index)) {
+            // the template has no outbound/proxy with the main outbound tag
+            error_log("subscription: template has no outbound \"$outbound\"");
+            header('500', true, 500);
+            exit;
         }
 
         switch ($_GET['t']) {
