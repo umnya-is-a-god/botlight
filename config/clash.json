@@ -130,22 +130,6 @@
         },
         {
             "type": "RULE-SET",
-            "list": "~process~",
-            "action": "PROXY",
-            "interval": 60,
-            "behavior": "classical",
-            "name": "process"
-        },
-        {
-            "type": "RULE-SET",
-            "list": "~package~",
-            "action": "PROXY",
-            "interval": 60,
-            "behavior": "classical",
-            "name": "package"
-        },
-        {
-            "type": "RULE-SET",
             "list": "~warp~",
             "action": "PROXY",
             "interval": 60,
@@ -159,14 +143,6 @@
             "interval": 60,
             "behavior": "classical",
             "name": "pac"
-        },
-        {
-            "type": "RULE-SET",
-            "list": "~subnet~",
-            "action": "PROXY",
-            "interval": 60,
-            "behavior": "classical",
-            "name": "subnet"
         },
         {
             "type": "MATCH",

@@ -1966,7 +1966,7 @@ DNS-over-HTTPS with IP:
                 if (in_array($type, ['white', 'deny'])) {
                     $conf[$type][] = $v;
                 } else {
-                    $conf[$type][in_array($type, ['rulessetlist', 'packagelist', 'processlist']) ? trim($v) : idn_to_ascii(trim($v))] = true;
+                    $conf[$type][$type == 'rulessetlist' ? trim($v) : idn_to_ascii(trim($v))] = true;
                 }
             }
             ksort($conf[$type]);
@@ -2355,8 +2355,6 @@ DNS-over-HTTPS with IP:
     public function pacMenu($page = 0)
     {
         unset($_SESSION['proxylistentry']);
-        $rmpac  = stat(__DIR__ . '/zapretlists/rmpac');
-        $rpac   = stat(__DIR__ . '/zapretlists/rpac');
         $mpac   = stat(__DIR__ . '/zapretlists/mpac');
         $pac    = stat(__DIR__ . '/zapretlists/pac');
         $conf   = $this->getPacConf();
@@ -2392,34 +2390,6 @@ DNS-over-HTTPS with IP:
             $urls[0][] = [
                 'text'    => "PAC ShadowSocks(Android)",
                 'web_app' => ['url'  => "https://$ip/pac$hash&t=mpac"],
-            ];
-        }
-        if ($rpac) {
-            $rpac['time']  = date('d.m.Y H:i:s', $rpac['mtime']);
-            $rpac['sz']    = $this->sizeFormat($rpac['size']);
-            $text .= <<<text
-
-
-                    <b>Reverse PAC ({$rpac['time']} / {$rpac['sz']}):</b>
-                    <code>$scheme://$ip/pac$hash&t=rpac&a=127.0.0.1&p=1080</code>
-                    text;
-            $urls[0][] = [
-                'text' => "Reverse PAC",
-                'url'  => "$scheme://$ip/pac$hash&t=rpac",
-            ];
-        }
-        if ($rmpac) {
-            $rmpac['time']  = date('d.m.Y H:i:s', $rmpac['mtime']);
-            $rmpac['sz']    = $this->sizeFormat($rmpac['size']);
-            $text .= <<<text
-
-
-                    <b>Reverse shadowsocks-android PAC ({$rmpac['time']} / {$rmpac['sz']}):</b>
-                    <code>$scheme://$ip/pac$hash&t=rmpac</code>
-                    text;
-            $urls[2][] = [
-                'text' => "Reverse PAC SS(Android)",
-                'url'  => "$scheme://$ip/pac$hash&t=rmpac",
             ];
         }
         if ($urls) {
@@ -2708,7 +2678,7 @@ DNS-over-HTTPS with IP:
                 }
                 $data[] = [
                     [
-                        'text'          => $this->i18n($v ? 'on' : 'off') . ' ' . ($basename ? basename($k) . ' ' : '') . (in_array($type, ['rulessetlist', 'packagelist', 'processlist', 'subnetlist']) ? $k : idn_to_utf8($k)),
+                        'text'          => $this->i18n($v ? 'on' : 'off') . ' ' . ($basename ? basename($k) . ' ' : '') . ($type == 'rulessetlist' ? $k : idn_to_utf8($k)),
                         'callback_data' => "/change$type " . ($i + $page * $this->limit) . " $page",
                     ],
                     [
@@ -4296,9 +4266,6 @@ DNS-over-HTTPS with IP:
         $text[] = <<<TEXT
             <code>~outbound~</code>
             <code>~pac~</code>
-            <code>~package~</code>
-            <code>~process~</code>
-            <code>~subnet~</code>
             <code>~block~</code>
             <code>~warp~</code>
             <code>~dns~</code>
@@ -5311,9 +5278,6 @@ DNS-over-HTTPS with IP:
             '"~pac~"'        => json_encode(array_keys(array_filter($pac['includelist'] ?: []))),
             '"~block~"'      => json_encode(array_keys(array_filter($pac['blocklist'] ?: []))),
             '"~warp~"'       => json_encode(array_keys(array_filter($pac['warplist'] ?: []))),
-            '"~process~"'    => json_encode(array_keys(array_filter($pac['processlist'] ?: []))),
-            '"~package~"'    => json_encode(array_keys(array_filter($pac['packagelist'] ?: []))),
-            '"~subnet~"'     => json_encode(array_keys(array_filter($pac['subnetlist'] ?: []))),
             '~dns~'          => "https://$domain/dns-query$hash/$uid",
             '~dnspath~'      => "/dns-query$hash/$uid",
             '~uid~'          => $uid,

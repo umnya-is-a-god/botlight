@@ -89,11 +89,6 @@ function start()
 
     $conf = $bot->getPacConf();
 
-    if (!empty($conf['subzoneslist'])) {
-        $subzones = array_keys(array_filter($conf['subzoneslist'], fn($x) => $x == true));
-    }
-
-    // check && exclude
     if (!empty($conf['includelist'])) {
         $domains = array_filter($conf['includelist'], fn($x) => $x == true);
     }
@@ -121,9 +116,6 @@ function start()
                 $time = microtime(true);
                 $j++;
             }
-            if ($exclude && preg_match('~' . implode('|', $exclude) . '~', $v)) {
-                continue;
-            }
             fwrite($f, preg_quote($v) . "\n");
 
             preg_match('~(.+)\.([^.]+)$~', $v, $m);
@@ -149,60 +141,9 @@ function start()
         file_put_contents(__DIR__ . '/zapretlists/pac', $pac);
         $text .= "Create minified pac 100%\n";
     }
-    // create reverse PAC
-    unset($domains);
-    if (!empty($conf['reverselist'])) {
-        $domains = array_filter($conf['reverselist'], fn($x) => $x == true);
-    }
-    if (empty($domains)) {
-
-        // $text .= "Empty reverse domains. Delete reverse pac files";
-        unlink(__DIR__ . '/zapretlists/rmpac');
-        unlink(__DIR__ . '/zapretlists/rpac');
-    } else {
-        $domains = array_keys($domains);
-
-        // $size = count($domains);
-        // $curr = $j = 0;
-        // $time = microtime(true);
-        // $f = fopen(__DIR__ . '/zapretlists/rmpac', 'w');
-        // $t = [];
-        // foreach ($domains as $v) {
-        //     $curr ++;
-        //     $percent = (int) ceil($curr * 100 / $size);
-        //     $rotate = $curr != $size ? $load[$j % count($load)] : '';
-        //     $tail = <<<text
-        //             Create reverse pac for shadowsocks-android $percent% $rotate
-        //             text;
-        //     if (microtime(true) - $time > 0.1) {
-        //         update($text . $tail);
-        //         $time = microtime(true);
-        //         $j++;
-        //     }
-        //     fwrite($f, '!(' . preg_quote($v) . ')' . "\n");
-
-        //     preg_match('~(.+)\.([^.]+)$~', $v, $m);
-        //     $t[$m[2]][strlen($m[1])][] = $m[1];
-        // }
-        // fclose($f);
-        $text .= $tail ? "$tail\n" : '';
-
-        $domains = json_encode($t);
-        $pac     = <<<PAC
-                    function FindProxyForURL(t, e) {
-                        var n = JSON.parse('$domains'),
-                        r = e.match(/((?:.+\.)*(.+))\.([^.]+)$/);
-                        if (r && n.hasOwnProperty(r[3]) && (n[r[3]].hasOwnProperty(r[1].length) && (-1 !== n[r[3]][r[1].length].indexOf(r[1])) || n[r[3]].hasOwnProperty(r[2].length) && (-1 !== n[r[3]][r[2].length].indexOf(r[2])))) {
-                            return "DIRECT";
-                        }
-                        return "SOCKS5 ~address~:~port~";
-                    }
-                    PAC;
-        $pac = preg_replace("~\s{2,}+~", '', $pac);
-        $pac = preg_replace("~\n~", '', $pac);
-        file_put_contents(__DIR__ . '/zapretlists/rpac', $pac);
-        $text .= 'Create minified reverse pac 100%';
-    }
+    // reverse PAC is not built any more, drop files left by older versions
+    @unlink(__DIR__ . '/zapretlists/rmpac');
+    @unlink(__DIR__ . '/zapretlists/rpac');
 
     endScript($text);
 }
