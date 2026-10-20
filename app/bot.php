@@ -469,8 +469,11 @@ class Bot
             case preg_match('~^/addOverrideHtml$~', $this->input['callback'], $m):
                 $this->addOverrideHtml();
                 break;
+            case preg_match('~^/delOverrideHtml$~', $this->input['callback'], $m):
+                $this->delOverrideHtml();
+                break;
             case preg_match('~^/export$~', $this->input['callback'], $m):
-                $this->pinBackup();
+                $this->sendBackup();
                 break;
             case preg_match('~^/import$~', $this->input['callback'], $m):
                 $this->import();
@@ -723,12 +726,33 @@ class Bot
         ];
     }
 
-    public function setOverrideHtml()
+    /**
+     * Cover page: nginx shows /app/webapp/override.html at the site root
+     * ("/") instead of the login prompt.
+     */
+    public function setOverrideHtml($text = '')
     {
+        $name = (string) ($this->input['file_name'] ?? '');
+        if (empty($this->input['file_id']) || !preg_match('~\.html?$~i', $name)) {
+            $this->send($this->input['chat'], 'send an .html file');
+            return $this->menu('config');
+        }
         $r = $this->request('getFile', ['file_id' => $this->input['file_id']]);
-        if (!empty($f = file_get_contents($this->file . $r['result']['file_path']))) {
+        if (($r['result']['file_size'] ?? 0) > 1048576) {
+            $this->send($this->input['chat'], 'the page is over 1 MB');
+            return $this->menu('config');
+        }
+        $f = file_get_contents($this->file . $r['result']['file_path']);
+        if (!empty($f)) {
             file_put_contents('/app/webapp/override.html', $f);
         }
+        $this->menu('config');
+    }
+
+    public function delOverrideHtml()
+    {
+        @unlink('/app/webapp/override.html');
+        $this->menu('config');
     }
 
     public function restartOcserv($conf)
@@ -970,7 +994,7 @@ class Bot
                 if ($lastBackupTime < $lastScheduledBackup) {
                     $c['last_backup_time'] = $now;
                     $this->setPacConf($c);
-                    $this->pinBackup();
+                    $this->sendBackup();
                 }
             }
         }
@@ -1063,7 +1087,7 @@ class Bot
         }
     }
 
-    public function pinBackup($file = false)
+    public function sendBackup($file = false)
     {
         require __DIR__ . '/config.php';
         $conf = $this->getPacConf();
@@ -1072,12 +1096,13 @@ class Bot
         if (!empty($file)) {
             file_put_contents($file, $json);
         }
+        // backups are not pinned any more; unpin the one older versions pinned
         if (!empty($conf['pinbackup'])) {
             $this->pinAdmin($conf['pinbackup'], 1);
+            unset($conf['pinbackup']);
+            $this->setPacConf($conf);
         }
-        $conf['pinbackup'] = $this->upload("{$bot}_export_" . date('d_m_Y_H_i') . '.json', $json, $c['admin'][0])['result']['message_id'];
-        $this->setPacConf($conf);
-        $this->pinAdmin($conf['pinbackup']);
+        $this->upload("{$bot}_export_" . date('d_m_Y_H_i') . '.json', $json, $c['admin'][0]);
     }
 
     /**
@@ -5754,7 +5779,7 @@ DNS-over-HTTPS with IP:
 
     public function applyupdatebot()
     {
-        $this->pinBackup($this->update);
+        $this->sendBackup($this->update);
         $r = $this->sendDraft($this->input['from'], 1, 'update...');
         file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
         file_put_contents('/update/key', $this->key);
@@ -5903,6 +5928,18 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/autoupdate",
             ],
         ];
+        // cover page at the site root ("fake html")
+        $fake   = is_file('/app/webapp/override.html');
+        $data[] = array_values(array_filter([
+            [
+                'text'          => $this->i18n('fake html') . ': ' . $this->i18n($fake ? 'on' : 'off'),
+                'callback_data' => '/addOverrideHtml',
+            ],
+            $fake ? [
+                'text'          => $this->i18n('delete') . ' ' . $this->i18n('fake html'),
+                'callback_data' => '/delOverrideHtml',
+            ] : null,
+        ]));
         $data[] = [
             [
                 'text'          => $this->i18n('branches'),
@@ -6331,9 +6368,9 @@ DNS-over-HTTPS with IP:
                 $this->send($this->input['from'], $this->input['message'] . ' - wrong format');
             }
         }
-        if ($c['pinbackup']) {
+        if (!empty($c['pinbackup'])) {
             $this->pinAdmin($c['pinbackup'], 1);
-            $c['pinbackup'] = '';
+            unset($c['pinbackup']);
         }
         $this->setPacConf($c);
         $this->menu('config');

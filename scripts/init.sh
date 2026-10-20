@@ -19,6 +19,7 @@ apt install -y \
     gnupg \
     lsb-release \
     make \
+    cron \
     git \
     iptables \
     iproute2 \
@@ -34,3 +35,6 @@ echo "<?php
 
 \$c = ['key' => '$KEY'];" > ./app/config.php
 make u
+# start the bot again after a reboot (make uncron turns it off)
+systemctl enable --now cron >/dev/null 2>&1 || true
+make cron
