@@ -173,9 +173,6 @@ class Bot
             case preg_match('~^/switchSilence$~', $this->input['callback'], $m):
                 $this->switchSilence();
                 break;
-            case preg_match('~^/switchScanIp$~', $this->input['callback'], $m):
-                $this->switchScanIp();
-                break;
             case preg_match('~^/autoScanTimeout$~', $this->input['callback'], $m):
                 $this->autoScanTimeout();
                 break;
@@ -217,24 +214,6 @@ class Bot
                 break;
             case preg_match('~^/adgFillAllowedClients(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->adgFillAllowedClients($m[1] ?: false);
-                break;
-            case preg_match('~^/appOutbound$~', $this->input['callback'], $m):
-                $this->appOutbound();
-                break;
-            case preg_match('~^/domainsOutbound$~', $this->input['callback'], $m):
-                $this->domainsOutbound();
-                break;
-            case preg_match('~^/finalOutbound$~', $this->input['callback'], $m):
-                $this->finalOutbound();
-                break;
-            case preg_match('~^/processOutbound$~', $this->input['callback'], $m):
-                $this->processOutbound();
-                break;
-            case preg_match('~^/offWarp$~', $this->input['callback'], $m):
-                $this->offWarp();
-                break;
-            case preg_match('~^/addSubdomain$~', $this->input['callback'], $m):
-                $this->addSubdomain();
                 break;
             case preg_match('~^/addLinkDomain$~', $this->input['callback'], $m):
                 $this->addLinkDomain();
@@ -287,9 +266,6 @@ class Bot
             case preg_match('~^/dnstt$~', $this->input['callback'] ?: $this->input['message'], $m):
                 $this->dnstt(!empty($this->input['callback']));
                 break;
-            case preg_match('~^/showdnstt$~', $this->input['callback'], $m):
-                $this->showdnstt();
-                break;
             case preg_match('~^/dnsttDownload$~', $this->input['callback'], $m):
                 $this->dnsttDownload();
                 break;
@@ -313,9 +289,6 @@ class Bot
                 break;
             case preg_match('~^/cleanLog$~', $this->input['callback'], $m):
                 $this->cleanLog();
-                break;
-            case preg_match('~^/delLog (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-                $this->delLog(...explode('_', $m['arg']));
                 break;
             case preg_match('~^/debug$~', $this->input['message'], $m):
                 $this->debug();
@@ -428,9 +401,6 @@ class Bot
             case preg_match('~^/listXr (\d+)$~', $this->input['callback'], $m):
                 $this->listXr($m[1]);
                 break;
-            case preg_match('~^/blinkmenuswitch$~', $this->input['callback'], $m):
-                $this->blinkmenuswitch();
-                break;
             case preg_match('~^/deladmin (\d+)$~', $this->input['callback'], $m):
                 $this->delAdmin($m[1]);
                 break;
@@ -448,12 +418,6 @@ class Bot
                 break;
             case preg_match('~^/(?P<action>change|delete)(?P<typelist>\w+) (?P<arg>\d+)(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
                 $this->listPacChange($m['typelist'], $m['action'], $m['arg'], $m['page'] ?: 0);
-                break;
-            case preg_match('~^/paczapret$~', $this->input['callback'], $m):
-                $this->pacZapret();
-                break;
-            case preg_match('~^/pacupdate$~', $this->input['callback'], $m):
-                $this->pacUpdate();
                 break;
             case preg_match('~^/domain$~', $this->input['callback'], $m):
                 $this->domain();
@@ -494,15 +458,6 @@ class Bot
             case preg_match('~^/xtlsproxy(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->xtlsproxy($m[1] ?: 0);
                 break;
-            case preg_match('~^/xtlsapp(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlsapp($m[1] ?: 0);
-                break;
-            case preg_match('~^/xtlsprocess(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlsprocess($m[1] ?: 0);
-                break;
-            case preg_match('~^/xtlssubnet(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlssubnet($m[1] ?: 0);
-                break;
             case preg_match('~^/xtlsrulesset(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->xtlsrulesset($m[1] ?: 0);
                 break;
@@ -538,15 +493,6 @@ class Bot
                 break;
             case preg_match('~^/include (\w+)$~', $this->input['callback'], $m):
                 $this->include($m[1]);
-                break;
-            case preg_match('~^/exclude (\d+)$~', $this->input['callback'], $m):
-                $this->exclude($m[1]);
-                break;
-            case preg_match('~^/reverse (\d+)$~', $this->input['callback'], $m):
-                $this->reverse($m[1]);
-                break;
-            case preg_match('~^/subzones (\d+)$~', $this->input['callback'], $m):
-                $this->subzones($m[1]);
                 break;
             case preg_match('~^/addOverrideHtml$~', $this->input['callback'], $m):
                 $this->addOverrideHtml();
@@ -1435,14 +1381,6 @@ class Bot
         $this->sendFile($this->input['from'], new CURLStringFile($conf, $c['email'] . ($t == 'cl' ? '_mihomo.yaml' :'_singbox.json')));
     }
 
-    public function blinkmenuswitch()
-    {
-        $c = $this->getPacConf();
-        $c['blinkmenu'] = $c['blinkmenu'] ? 0 : 1;
-        $this->setPacConf($c);
-        $this->menu('config');
-    }
-
     public function qrXray($i, $s = false)
     {
         $link    = $this->linkXray($i, $s);
@@ -1454,11 +1392,6 @@ class Bot
             "<code>$link</code>"
         );
         unlink($qr_file);
-        if ($this->getPacConf()['blinkmenu']) {
-            $this->delete($this->input['chat'], $this->input['message_id']);
-            $this->input['message_id'] = $this->send($this->input['chat'], '.')['result']['message_id'];
-            $this->xray();
-        }
     }
 
     public function upload($name, $code, $chat = false)
@@ -1728,21 +1661,6 @@ class Bot
         ];
     }
 
-    public function addSubdomain()
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter subdomain",
-            $this->input['message_id'],
-            reply: 'enter subdomain',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setSubdomain',
-            'args'          => [],
-        ];
-    }
-
     public function setIpLimit()
     {
         $r = $this->send(
@@ -1783,18 +1701,6 @@ class Bot
         }
         $this->setPacConf($c);
         $this->xray();
-    }
-
-    public function setSubdomain($text)
-    {
-        $c = $this->getPacConf();
-        if (empty($text)) {
-            unset($c['subdomain']);
-        } else {
-            $c['subdomain'] = array_filter(explode(',', $text), fn($e) => !empty(trim($e)));
-        }
-        $this->setPacConf($c);
-        $this->menu('config');
     }
 
     public function enterPage()
@@ -2074,15 +1980,6 @@ DNS-over-HTTPS with IP:
                 $this->xrayUpdateRules();
                 $this->xtlswarp($page);
                 break;
-            case 'processlist':
-                $this->xtlsprocess($page);
-                break;
-            case 'packagelist':
-                $this->xtlsapp($page);
-                break;
-            case 'subnetlist':
-                $this->xtlssubnet($page);
-                break;
             case 'rulessetlist':
                 $this->xtlsrulesset($page);
                 break;
@@ -2224,99 +2121,6 @@ DNS-over-HTTPS with IP:
         }
         $xr['routing']['rules'] = $rules ?: [];
         $this->restartXray($xr);
-    }
-
-    public function reverse(int $count)
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} list domains separated by commas",
-            $this->input['message_id'],
-            reply: 'list domains separated by commas',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addReverse',
-            'args'          => [$count],
-        ];
-    }
-
-    public function addReverse(string $domains, int $count)
-    {
-        $domains = explode(',', $domains);
-        $domains = array_filter($domains, fn($x) => !empty(trim($x)));
-        if (!empty($domains)) {
-            $conf = $this->getPacConf();
-            foreach ($domains as $k => $v) {
-                $conf['reverselist'][idn_to_ascii(trim($v))] = true;
-            }
-            ksort($conf['reverselist']);
-            $this->setPacConf($conf);
-            $page = (int) floor(array_search($v, array_keys($conf['reverselist'])) / $count);
-        }
-        $page = $page ?: -2;
-        $this->menu('reverselist', $page);
-    }
-
-    public function subzones(int $count)
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} list subdomains separated by commas",
-            $this->input['message_id'],
-            reply: 'list subdomains separated by commas',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addSubzones',
-            'args'          => [$count],
-        ];
-    }
-
-    public function addSubzones(string $domains, int $count)
-    {
-        $domains = explode(',', $domains);
-        $domains = array_filter($domains, fn($x) => !empty(trim($x)));
-        if (!empty($domains)) {
-            $conf = $this->getPacConf();
-            foreach ($domains as $k => $v) {
-                $conf['subzoneslist'][idn_to_ascii(trim($v))] = true;
-            }
-            ksort($conf['subzoneslist']);
-            $this->setPacConf($conf);
-            $page = (int) floor(array_search($v, array_keys($conf['subzoneslist'])) / $count);
-        }
-        $page = $page ?: -2;
-        $this->menu('subzoneslist', $page);
-    }
-
-    public function exclude(int $count)
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter regular expression",
-            $this->input['message_id'],
-            reply: 'enter regular expression',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addExclude',
-            'args'          => [$count],
-        ];
-    }
-
-    public function addExclude(string $reg, int $count)
-    {
-        $reg = trim($reg);
-        if (!empty($reg)) {
-            $conf = $this->getPacConf();
-            $conf['excludelist'][$reg] = true;
-            ksort($conf['excludelist']);
-            $this->setPacConf($conf);
-            $page = (int) floor(array_search($reg, array_keys($conf['excludelist'])) / $count);
-        }
-        $page = $page ?: -2;
-        $this->menu('excludelist', $page);
     }
 
     public function subnetAdd($wgpage, $page, $openconnect)
@@ -2649,12 +2453,6 @@ DNS-over-HTTPS with IP:
             case 'warplist':
                 $this->xtlswarp();
                 break;
-            case 'packagelist':
-                $this->xtlsapp();
-                break;
-            case 'processlist':
-                $this->xtlsprocess();
-                break;
             case 'rulessetlist':
                 $this->xtlsrulesset();
                 break;
@@ -2672,15 +2470,6 @@ DNS-over-HTTPS with IP:
                 break;
             case 'blocklist':
                 $dir = 'BLOCK';
-                break;
-            case 'packagelist':
-                $dir = 'PACKAGE';
-                break;
-            case 'processlist':
-                $dir = 'PROCESS';
-                break;
-            case 'subnetlist':
-                $dir = 'SUBNET';
                 break;
             case 'rulessetlist':
                 $dir = 'rulesset';
@@ -2717,30 +2506,6 @@ DNS-over-HTTPS with IP:
                     [
                         'text'          => $this->i18n('back'),
                         'callback_data' => "/xtlsblock",
-                    ],
-                ];
-                break;
-            case 'packagelist':
-                $data[] = [
-                    [
-                        'text'          => $this->i18n('back'),
-                        'callback_data' => "/xtlsapp",
-                    ],
-                ];
-                break;
-            case 'processlist':
-                $data[] = [
-                    [
-                        'text'          => $this->i18n('back'),
-                        'callback_data' => "/xtlsprocess",
-                    ],
-                ];
-                break;
-            case 'subnetlist':
-                $data[] = [
-                    [
-                        'text'          => $this->i18n('back'),
-                        'callback_data' => "/xtlssubnet",
                     ],
                 ];
                 break;
@@ -2888,96 +2653,6 @@ DNS-over-HTTPS with IP:
         );
     }
 
-    public function appOutbound()
-    {
-        $p = $this->getPacConf();
-        $p['app_outbound'] = !$p['app_outbound'];
-        $p = $this->setPacConf($p);
-        $this->xtlsapp();
-    }
-
-    public function domainsOutbound()
-    {
-        $p = $this->getPacConf();
-        $p['domains_outbound'] = !$p['domains_outbound'];
-        $p = $this->setPacConf($p);
-        $this->xtlsproxy();
-    }
-
-    public function finalOutbound()
-    {
-        $p = $this->getPacConf();
-        $p['final_outbound'] = !$p['final_outbound'];
-        $p = $this->setPacConf($p);
-        $this->routes();
-    }
-
-    public function processOutbound()
-    {
-        $p = $this->getPacConf();
-        $p['process_outbound'] = !$p['process_outbound'];
-        $p = $this->setPacConf($p);
-        $this->xtlsprocess();
-    }
-
-    public function xtlsapp($page = 0)
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> package list';
-
-        [$data] = $this->listPac('packagelist', $page, 'xtlsapp');
-        $p      = $this->getPacConf();
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/routes",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
-
-    public function xtlsprocess($page = 0)
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> process list';
-
-        [$data] = $this->listPac('processlist', $page, 'xtlsprocess');
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/routes",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
-
-    public function xtlssubnet($page = 0)
-    {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> subnet';
-
-        [$data] = $this->listPac('subnetlist', $page, 'xtlssubnet');
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => "/routes",
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            implode("\n", $text ?: ['...']),
-            $data ?: false,
-        );
-    }
-
     public function xtlsrulesset($page = 0)
     {
         $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> rulesset list';
@@ -3090,14 +2765,6 @@ DNS-over-HTTPS with IP:
         }
         $this->setPacConf($conf);
         $this->backXtlsList($type, $page);
-    }
-
-    public function pacZapret()
-    {
-        $conf = $this->getPacConf();
-        $conf['zapret'] = !$conf['zapret'];
-        $this->setPacConf($conf);
-        $this->menu('pac');
     }
 
     public function pacUpdate($import = '')
@@ -3220,14 +2887,6 @@ DNS-over-HTTPS with IP:
     public function dnsttDownload()
     {
         $this->sendFile($this->input['from'], curl_file_create('/config/dnstt/server.pub'));
-    }
-
-    public function showdnstt()
-    {
-        $c = $this->getPacConf();
-        $c['showdnstt'] = empty($c['showdnstt']);
-        $this->setPacConf($c);
-        $this->dnstt(1);
     }
 
     public function dnstt($update = false)
@@ -3482,14 +3141,6 @@ DNS-over-HTTPS with IP:
                 $data ?: false,
             );
         }
-    }
-
-    public function switchScanIp()
-    {
-        $c = $this->getPacConf();
-        $c['autoscan'] = $c['autoscan'] ? 0 : 1;
-        $this->setPacConf($c);
-        $this->ipMenu();
     }
 
     public function switchBanIp()
@@ -4948,18 +4599,6 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/xtlsproxy",
             ]],
             [[
-                'text'          => "subnet",
-                'callback_data' => "/xtlssubnet",
-            ]],
-            [[
-                'text'          => 'process',
-                'callback_data' => "/xtlsprocess",
-            ]],
-            [[
-                'text'          => 'package',
-                'callback_data' => "/xtlsapp",
-            ]],
-            [[
                 'text'          => $this->i18n('rulesset'),
                 'callback_data' => "/xtlsrulesset",
             ]],
@@ -5189,37 +4828,6 @@ DNS-over-HTTPS with IP:
                 }
             }
             $this->pool[$m['email']]['ip'] = $ip;
-        }
-    }
-
-    public function offWarp()
-    {
-        $p    = $this->getPacConf();
-        if (!empty($this->selfupdate)) {
-            if (!empty($p['warpoff'])) {
-                $this->ssh('warp-cli --accept-tos registration delete 2>&1', 'wp');
-                $this->ssh('pkill warp-svc', 'wp');
-            }
-        } elseif (!empty($p['warpoff'])) {
-            $this->ssh('warp-svc > /dev/null 2>&1 &', 'wp');
-            sleep(3);
-            if (empty($this->ssh('[ -f "/var/lib/cloudflare-warp/conf.json" ] && echo 1', 'wp'))) {
-                $this->send($this->input['chat'], 'Registration: ' . $this->ssh('warp-cli --accept-tos registration new 2>&1', 'wp'));
-                if (!empty($p['warp'])) {
-                    $this->send($this->input['chat'], 'License: ' . $this->ssh("warp-cli --accept-tos registration license {$p['warp']} 2>&1", 'wp'));
-                }
-            }
-            $this->send($this->input['chat'], 'Proxy mode: ' . $this->ssh('warp-cli --accept-tos mode proxy 2>&1', 'wp'));
-            $this->send($this->input['chat'], 'Connect: ' . $this->ssh('warp-cli --accept-tos connect 2>&1', 'wp'));
-            unset($p['warpoff']);
-        } else {
-            $this->send($this->input['chat'], 'Registration delete: ' . $this->ssh('warp-cli --accept-tos registration delete 2>&1', 'wp'));
-            $this->ssh('pkill warp-svc', 'wp');
-            $p['warpoff'] = 1;
-        }
-        $this->setPacConf($p);
-        if (empty($this->selfupdate)) {
-            $this->warp();
         }
     }
 
@@ -6752,17 +6360,6 @@ DNS-over-HTTPS with IP:
     {
         foreach (scandir('/logs/') as $k => $v) {
             file_put_contents("/logs/$v", '');
-        }
-        $this->logs();
-    }
-
-    public function delLog($i)
-    {
-        foreach (scandir('/logs/') as $k => $v) {
-            if ($i == $k) {
-                unlink("/logs/$v");
-                break;
-            }
         }
         $this->logs();
     }

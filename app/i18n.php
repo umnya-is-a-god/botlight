@@ -109,25 +109,9 @@ $i = [
         'en' => 'update',
         'ru' => 'обновить',
     ],
-    'self list'            => [
-        'en' => 'self list',
-        'ru' => 'собственный список',
-    ],
-    'reverse list'         => [
-        'en' => 'reverse list',
-        'ru' => 'обратный список',
-    ],
-    'subzones'             => [
-        'en' => 'subzones',
-        'ru' => 'поддомены',
-    ],
     'check url'            => [
         'en' => 'check url',
         'ru' => 'проверить домен',
-    ],
-    'blacklist exclude'    => [
-        'en' => 'blacklist exclude',
-        'ru' => 'исключения из списка ркн',
     ],
     'lang'                 => [
         'en' => 'language',
@@ -140,14 +124,6 @@ $i = [
     'domain explain'       => [
         'en' => 'Some clients require a valid certificate when connecting, such as windows 11 DoH or ShadowSocks Android (PAC url), this requires a domain',
         'ru' => 'Некоторым клиентам требуется валидный сертификат при подключении, например Windows 11 DoH или ShadowSocks Android (URL-адрес PAC), для этого требуется домен',
-    ],
-    'self list explain'    => [
-        'en' => ' - domains that will work through a proxy, all others directly',
-        'ru' => ' - домены, которые будут работать через прокси, все остальные напрямую',
-    ],
-    'reverse list explain' => [
-        'en' => ' - domains that will work directly, all others through a proxy',
-        'ru' => ' - домены которые будут работать напрямую, все остальные через прокси',
     ],
     'timer'                => [
         'en' => 'set timer',
@@ -164,14 +140,6 @@ $i = [
     'off'  => [
         'en' => '🔴',
         'ru' => '🔴',
-    ],
-    'blinkmenuon'  => [
-        'en' => 'blinkmenu on',
-        'ru' => 'прыгающее меню вкл',
-    ],
-    'blinkmenuoff'  => [
-        'en' => 'blinkmenu off',
-        'ru' => 'прыгающее меню выкл',
     ],
     'listSubnet'  => [
         'en' => 'listSubnet',
