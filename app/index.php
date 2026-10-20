@@ -88,8 +88,8 @@ switch (true) {
             }
         }
         $type    = is_string($_GET['t'] ?? null) ? $_GET['t'] : 'pac';
-        $address = preg_match('~^[A-Za-z0-9.:\[\]-]{1,253}$~', $_GET['a'] ?? '') ? $_GET['a'] : '127.0.0.1';
-        $port    = preg_match('~^\d{1,5}$~', $_GET['p'] ?? '') ? $_GET['p'] : '1080';
+        $address = preg_match('~^[A-Za-z0-9.:\[\]-]{1,253}$~D', $_GET['a'] ?? '') ? $_GET['a'] : '127.0.0.1';
+        $port    = preg_match('~^\d{1,5}$~D', $_GET['p'] ?? '') ? $_GET['p'] : '1080';
         switch ($type) {
             case 's':
             case 'si':

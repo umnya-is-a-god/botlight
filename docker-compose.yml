@@ -311,6 +311,9 @@ services:
               required: false
         stop_grace_period: 1s
         command: ["/bin/sh", "/start_xray.sh"]
+        # iptables: egress filter for client traffic (start_xray.sh)
+        cap_add:
+            - NET_ADMIN
         networks:
             default:
                 ipv4_address: 10.10.0.9
@@ -436,6 +439,9 @@ services:
               required: false
         stop_grace_period: 1s
         command: ["/bin/sh", "/start_dnstt.sh"]
+        # iptables: keeps tunnel users out of internal networks
+        cap_add:
+            - NET_ADMIN
         networks:
             default:
                 ipv4_address: 10.10.0.16

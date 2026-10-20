@@ -36,7 +36,7 @@ class Bot
         $this->api      = "https://$api/bot$key/";
         $this->file     = "https://$api/file/bot$key/";
         $this->pac      = '/config/pac.json';
-        $this->ip       = getenv('IP');
+        $this->ip       = filter_var(getenv('IP'), FILTER_VALIDATE_IP) ?: '';
         $this->i18n     = $i18n;
         $this->language = $this->getPacConf()['language'] ?: 'en';
         $this->dns      = '1.1.1.1, 8.8.8.8';
@@ -100,14 +100,21 @@ class Bot
     {
         $file = __DIR__ . '/config.php';
         require $file;
+        $from = is_int($this->input['from']) ? $this->input['from'] : 0;
         if (empty($c['admin'])) {
-            $c['admin'] = [$this->input['from']];
+            // the first admin is whoever writes to the bot first, and only
+            // from a private chat with a real user id (not a channel, group
+            // or an update without a sender)
+            if ($from <= 0 || empty($this->input_raw['message']) || ($this->input_raw['message']['chat']['type'] ?? '') !== 'private') {
+                return;
+            }
+            $c['admin'] = [$from];
             file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
         } elseif (!is_array($c['admin'])) {
             $c['admin'] = [$c['admin']];
             file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
         }
-        if (in_array($this->input['from'], $c['admin'])) {
+        if ($from !== 0 && in_array($from, array_map('intval', $c['admin']), true)) {
             $this->admin = true;
         }
     }
@@ -584,7 +591,8 @@ class Bot
             $this->collectSession();
             file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->ssh('pkill xray', 'xr');
-            $this->ssh('xray run -config /xray.json > /dev/null 2>&1 &', 'xr');
+            // not without the egress filter (see scripts/start_xray.sh)
+            $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray.json > /dev/null 2>&1 &', 'xr');
         } else {
             file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         }
@@ -834,6 +842,9 @@ class Bot
 
     public function chocdomain($domain)
     {
+        if ($domain && !$this->validHost($domain)) {
+            return;
+        }
         $oc = $this->getHashSubdomain('oc');
         $c  = file_get_contents('/config/ocserv.conf');
         $t  = preg_replace('~^default-domain[^\n]+~sm', "default-domain = $oc.$domain", $c);
@@ -1433,10 +1444,14 @@ class Bot
 
     public function addDomain($domain, $nomenu = false)
     {
-        $domain = trim($domain);
+        $domain = trim((string) $domain);
+        if ($domain !== '' && !$this->validHost($domain = (string) idn_to_ascii($domain))) {
+            $this->send($this->input['chat'], 'wrong domain');
+            $domain = '';
+        }
         if (!empty($domain)) {
             $conf = $this->getPacConf();
-            $conf['domain'] = idn_to_ascii($domain);
+            $conf['domain'] = $domain;
             $this->setPacConf($conf);
             $this->chocdomain($domain);
             $this->setUpstreamDomainOcserv($domain);
@@ -1452,7 +1467,7 @@ class Bot
     {
         require __DIR__ . '/config.php';
         $p  = $this->getPacConf();
-        $ip = getenv('IP');
+        $ip = $this->ip;
         $r  = $this->send($c['admin'][0], "start $ip");
 
         $this->input['chat']        = $c['admin'][0];
@@ -1591,7 +1606,7 @@ class Bot
     public function adguardSync()
     {
         $pac = $this->getPacConf();
-        $pac['adpswd'] = $pac['adpswd'] ?: substr(hash('md5', time()), 0, 10);
+        $pac['adpswd'] = $pac['adpswd'] ?: bin2hex(random_bytes(8));
         $this->setPacConf($pac);
         $ssl = $this->nginxGetTypeCert();
         $c   = yaml_parse_file($this->adguard);
@@ -1652,6 +1667,11 @@ class Bot
 
     public function setAdKey($key)
     {
+        // used as a subdomain (DoT client id) in nginx/certbot/AdGuard configs
+        if (!preg_match('~^[a-z0-9-]{1,63}$~D', $key = strtolower(trim((string) $key)))) {
+            $this->send($this->input['chat'], 'wrong key: a-z, 0-9, -');
+            return;
+        }
         $c = $this->getPacConf();
         $c['adguardkey'] = $key;
         $this->setPacConf($c);
@@ -2846,6 +2866,10 @@ DNS-over-HTTPS with IP:
     public function setdnsttDomain($text)
     {
         $c = $this->getPacConf();
+        if ($text && !$this->validHost($text = trim((string) $text))) {
+            $this->send($this->input['chat'], 'wrong domain');
+            return;
+        }
         if ($text) {
             $c['dnsttDomain'] = $text;
         } else {
@@ -2861,13 +2885,15 @@ DNS-over-HTTPS with IP:
         $c = $this->getPacConf();
         $this->ssh('pkill dnstt', 'dnstt');
         // the domain goes into a background "sh -c" command: allow hostnames only
-        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~', $c['dnsttDomain'])) {
-            $this->ssh("adduser -D -s /bin/sh vpnbot", 'dnstt');
+        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~D', $c['dnsttDomain'])) {
             $this->ssh('echo ' . escapeshellarg("vpnbot:{$c['dnsttPassword']}") . ' | chpasswd', 'dnstt');
             if (!file_exists('/config/dnstt/server.key')) {
                 $this->ssh("dnstt-server -gen-key -privkey-file /dnstt/server.key -pubkey-file /dnstt/server.pub", 'dnstt');
             }
             $this->ssh("dnstt-server -udp :53 -privkey-file /dnstt/server.key {$c['dnsttDomain']} 127.0.0.1:22", 'dnstt' , false, '/logs/dnstt');
+        } else {
+            // dnstt is off: the tunnel account must not keep an old password
+            $this->ssh('passwd -l vpnbot', 'dnstt');
         }
     }
 
@@ -2883,7 +2909,7 @@ DNS-over-HTTPS with IP:
         $text[] = "dnstt";
         if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword'])) {
             $text[] = "<pre>set the NS record for {$c['dnsttDomain']}: tns.{$c['domain']}\nset A record for tns.{$c['domain']}: {$this->ip}</pre>";
-            $text[] = "account: <code>vpnbot:{$c['dnsttPassword']}</code>";
+            $text[] = 'account: <code>vpnbot:' . htmlspecialchars($c['dnsttPassword']) . '</code>';
             $text[] = "server name: <code>{$c['dnsttDomain']}</code>";
             $text[] = "public key: <code>$pubkey</code>";
             $data[] = [
@@ -3379,7 +3405,7 @@ DNS-over-HTTPS with IP:
 
     public function searchLogs($search, $fun = false, $page = 0, $white = 0)
     {
-        if (preg_match('~^\d+\.\d+\.\d+\.\d+$~', $search)) {
+        if (preg_match('~^\d+\.\d+\.\d+\.\d+$~D', $search)) {
             $info = file_get_contents("https://ipinfo.io/$search/json", context: stream_context_create(['http' => ['timeout' => 2]]));
             $text = "$search\n<pre>$info</pre>";
             $data[] = [
@@ -3687,9 +3713,29 @@ DNS-over-HTTPS with IP:
         }
     }
 
+    /**
+     * An IPv4/IPv6 address or CIDR: the only thing allowed into the nginx
+     * allow/deny include.
+     */
+    public function validIpOrCidr($v): bool
+    {
+        if (!is_string($v) || !preg_match('~^([0-9A-Fa-f:.]+)(?:/(\d{1,3}))?$~D', $v, $m)) {
+            return false;
+        }
+        if (filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return !isset($m[2]) || (int) $m[2] <= 32;
+        }
+        if (filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return !isset($m[2]) || (int) $m[2] <= 128;
+        }
+        return false;
+    }
+
     public function syncDeny()
     {
         $pac = $this->getPacConf();
+        $pac['white'] = array_values(array_filter($pac['white'] ?: [], [$this, 'validIpOrCidr']));
+        $pac['deny']  = array_values(array_filter($pac['deny'] ?: [], [$this, 'validIpOrCidr']));
         $text = '';
         if (!empty($xr)) {
             foreach (array_keys($xr) as $v) {
@@ -3819,7 +3865,7 @@ DNS-over-HTTPS with IP:
         $t = str_replace([
             '~ip~',
         ], [
-            getenv('IP'),
+            $this->ip,
         ], $s);
         $this->sendFile($this->input['from'], new CURLStringFile($t, 'socat.sh', 'application/x-sh'));
     }
@@ -4638,7 +4684,7 @@ DNS-over-HTTPS with IP:
         }
 
         // the key goes into a sed expression: WARP+ keys are letters, digits and dashes
-        if (!empty($key) && !preg_match('~^[A-Za-z0-9-]{1,64}$~', $key)) {
+        if (!empty($key) && !preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key)) {
             $this->send($chat, 'wrong license key');
             return;
         }
@@ -4981,13 +5027,14 @@ DNS-over-HTTPS with IP:
         $xr     = $this->getXray();
         $pac    = $this->getPacConf();
         $st     = $this->getXrayStats();
-        $domain = $_GET['cdn'] ?: ($_SERVER['SERVER_NAME'] ?: $this->getDomain($pac['transport'] != 'Reality'));
+        $domain = $this->requestDomain($pac);
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
         $flag   = true;
         $client = null;
+        $id = is_string($_GET['id'] ?? null) ? $_GET['id'] : '';
         foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
-            if ($v['id'] == $_GET['id']) {
+            if ($id !== '' && hash_equals((string) $v['id'], $id)) {
                 if (empty($v['off'])) {
                     $flag = false;
                 }
@@ -4997,6 +5044,10 @@ DNS-over-HTTPS with IP:
                 $client = $v;
                 break;
             }
+        }
+        if ($flag) {
+            header('404', true, 404);
+            exit;
         }
         $suburl   = "<a href='$scheme://{$domain}/pac$hash/sub?id={$uid}'>subscription</a>";
         $download = $this->getBytes($st['users'][$k]['global']['download'] + $st['users'][$k]['session']['download']);
@@ -5037,15 +5088,16 @@ DNS-over-HTTPS with IP:
                 exit;
         }
         $pac    = $this->getPacConf();
-        $domain = $_GET['cdn'] ?: ($_SERVER['SERVER_NAME'] ?: $this->getDomain($pac['transport'] != 'Reality'));
+        $domain = $this->requestDomain($pac);
         $xr     = $this->getXray();
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
         $flag = true;
         $client = null;
+        $sid = is_string($_GET['s'] ?? null) ? $_GET['s'] : '';
         foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
-            if ($v['id'] == $_GET['s']) {
+            if ($sid !== '' && hash_equals((string) $v['id'], $sid)) {
                 if (empty($v['off'])) {
                     $flag = false;
                 }
@@ -5402,6 +5454,14 @@ DNS-over-HTTPS with IP:
 
     public function replaceTags($subject, $tags)
     {
+        // $subject is JSON: a tag written with quotes ("~pac~") is replaced by
+        // a ready JSON value, any other tag sits inside a JSON string and its
+        // value is escaped so it cannot break out of that string
+        foreach ($tags as $k => $v) {
+            if ($k[0] !== '"') {
+                $tags[$k] = substr(json_encode((string) $v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 1, -1);
+            }
+        }
         return str_replace(array_keys($tags), array_values($tags), $subject);
     }
 
@@ -5513,7 +5573,6 @@ DNS-over-HTTPS with IP:
         $name = preg_replace('~[^A-Za-z0-9_.-]~', '', $name) ?: 'ruleset';
         header("Content-Disposition: attachment; filename=$name.srs");
         header('Content-Type: application/binary');
-        $f = "/tmp/$name" . time() . rand(1, 100);
         foreach ($rules as $k => $v) {
             if (array_key_exists('domain_suffix', $v)) {
                 foreach ($v['domain_suffix'] as $j) {
@@ -5532,14 +5591,33 @@ DNS-over-HTTPS with IP:
                 }
             }
         }
-        file_put_contents($f, json_encode([
+        $json = json_encode([
             'version' => 1,
             'rules'   => $rules ?: [],
-        ]));
-        exec('sing-box rule-set compile ' . escapeshellarg($f));
-        echo file_get_contents("$f.srs");
-        unlink($f);
-        unlink("$f.srs");
+        ]);
+        // compiled once per content: clients refresh rule-sets often and
+        // compiling on every request would let them load the server
+        $dir = '/tmp/srs';
+        @mkdir($dir, 0700);
+        $f = "$dir/" . hash('sha256', $json);
+        if (!is_file("$f.srs")) {
+            $tmp = "$f." . bin2hex(random_bytes(6));
+            file_put_contents($tmp, $json);
+            exec('sing-box rule-set compile --output ' . escapeshellarg("$tmp.srs") . ' ' . escapeshellarg($tmp));
+            @unlink($tmp);
+            if (is_file("$tmp.srs")) {
+                rename("$tmp.srs", "$f.srs");
+            }
+            // keep the cache small: drop compiled sets not used for a day
+            foreach (glob("$dir/*.srs") ?: [] as $old) {
+                if (filemtime($old) < time() - 86400) {
+                    @unlink($old);
+                }
+            }
+        } else {
+            @touch("$f.srs");
+        }
+        readfile("$f.srs");
         exit;
     }
 
@@ -5592,6 +5670,10 @@ DNS-over-HTTPS with IP:
 
     public function setUpstreamDomain($domain)
     {
+        // written into the nginx stream config: host names only
+        if (!$this->validHost($domain)) {
+            return;
+        }
         $nginx = file_get_contents('/config/upstream.conf');
         $t = preg_replace('~#domain.+#domain~s', "#domain\n$domain reality;\n#domain", $nginx);
         file_put_contents('/config/upstream.conf', $t);
@@ -5600,6 +5682,9 @@ DNS-over-HTTPS with IP:
 
     public function setUpstreamDomainOcserv($domain)
     {
+        if ($domain && !$this->validHost($domain)) {
+            return;
+        }
         $sub   = $this->getHashSubdomain('oc');
         $nginx = file_get_contents('/config/upstream.conf');
         $t     = preg_replace('~#ocserv.+#ocserv~s', $domain ? "#ocserv\n" . ($sub ? '' : '#' ) . "$sub.$domain ocserv;\n#ocserv" : "#ocserv\n#$sub.\$domain ocserv;\n#ocserv", $nginx);
@@ -5631,9 +5716,37 @@ DNS-over-HTTPS with IP:
         return $p['hashbot'];
     }
 
+    /**
+     * A plain DNS host name (ASCII/punycode). Everything that ends up in
+     * nginx, Xray or certbot configs as a domain must pass this.
+     */
+    public function validHost($host): bool
+    {
+        return is_string($host)
+            && strlen($host) <= 253
+            && (bool) preg_match('~^(?=.{1,253}$)([A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9])?)*\.?$~D', $host);
+    }
+
+    /**
+     * Domain for links in a subscription: ?cdn= or the request Host,
+     * only when it is a valid host name, else the configured one.
+     */
+    public function requestDomain($pac)
+    {
+        foreach ([$_GET['cdn'] ?? null, $_SERVER['SERVER_NAME'] ?? null] as $d) {
+            if (is_string($d) && $d !== '' && $this->validHost($d)) {
+                return $d;
+            }
+        }
+        return $this->getDomain($pac['transport'] != 'Reality');
+    }
+
     public function cloakNginx()
     {
         $conf     = $this->getPacConf();
+        if (!empty($conf['domain']) && !$this->validHost($conf['domain'])) {
+            $conf['domain'] = '';
+        }
         $template = file_get_contents('/config/nginx_default.conf');
         // $template = preg_replace('~server_name ip~', "server_name {$this->ip}", $template);
         $template = preg_replace('~server_name domain~', "server_name " . ($conf['domain'] ? " *.{$conf['domain']} {$conf['domain']}" : '_'), $template);
@@ -6259,7 +6372,7 @@ DNS-over-HTTPS with IP:
 
     public function selfUpdate()
     {
-        $ip                         = getenv('IP');
+        $ip                         = $this->ip;
         $rm                         = explode(':', trim(file_get_contents('/update/reload_message')));
         $m                          = file_get_contents('/update/message');
         $this->input['chat']        = $rm[0];
@@ -6333,6 +6446,11 @@ DNS-over-HTTPS with IP:
 
     public function setFakeDomain($domain, $self = false)
     {
+        // goes into the upstream SNI map and the Reality settings
+        if (!$this->validHost($domain = trim((string) $domain))) {
+            $this->send($this->input['chat'], 'wrong domain');
+            return;
+        }
         $c = $this->getXray();
         $p = $this->getPacConf();
         $c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0] = $domain;

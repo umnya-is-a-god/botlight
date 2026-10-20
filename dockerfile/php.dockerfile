@@ -1,5 +1,13 @@
 ARG image
 FROM $image
+# Release binaries are pinned by version and SHA-256: a changed or
+# corrupted download fails the build.
+ARG dnslookup_version=1.11.1
+ARG dnslookup_sha256=daf7b40d498d8ac8a94672b5f95e94d3efac53641a51fa72a5ad776e2cd532f1
+ARG singbox_version=1.14.3
+ARG singbox_sha256=e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee
+ARG mihomo_version=1.19.32
+ARG mihomo_sha256=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10
 RUN apk add --no-cache --update php83 \
     php83-fpm \
     php83-mbstring \
@@ -22,17 +30,18 @@ RUN apk add --no-cache --update php83 \
     git \
     && ln -sf /usr/bin/php83 /usr/bin/php \
     && mkdir /root/.ssh \
-    && wget https://github.com/ameshkov/dnslookup/releases/download/v1.11.1/dnslookup-linux-amd64-v1.11.1.tar.gz \
-    && tar -xf dnslookup-linux-amd64-v1.11.1.tar.gz \
-    && mv linux-amd64/dnslookup /usr/bin \
-    && rm dnslookup-linux-amd64-v1.11.1.tar.gz \
-    && rm -rf /linux-amd64 \
-    && wget https://github.com/SagerNet/sing-box/releases/download/v1.14.3/sing-box-1.14.3-linux-amd64.tar.gz \
-    && tar -xf sing-box-1.14.3-linux-amd64.tar.gz \
-    && mv sing-box-1.14.3-linux-amd64/sing-box /usr/bin \
-    && rm sing-box-1.14.3-linux-amd64.tar.gz \
-    && rm -rf /sing-box-1.14.3-linux-amd64 \
-    && wget https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-v1.19.32.gz \
-    && gunzip mihomo-linux-amd64-v1.19.32.gz \
-    && mv mihomo-linux-amd64-v1.19.32 /usr/bin/mihomo \
-    && chmod +x /usr/bin/mihomo
+    && mkdir /tmp/dl && cd /tmp/dl \
+    && wget -O dnslookup.tar.gz https://github.com/ameshkov/dnslookup/releases/download/v$dnslookup_version/dnslookup-linux-amd64-v$dnslookup_version.tar.gz \
+    && echo "$dnslookup_sha256  dnslookup.tar.gz" | sha256sum -c - \
+    && tar -xf dnslookup.tar.gz \
+    && mv linux-amd64/dnslookup /usr/bin/ \
+    && wget -O sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v$singbox_version/sing-box-$singbox_version-linux-amd64.tar.gz \
+    && echo "$singbox_sha256  sing-box.tar.gz" | sha256sum -c - \
+    && tar -xf sing-box.tar.gz \
+    && mv sing-box-$singbox_version-linux-amd64/sing-box /usr/bin/ \
+    && wget -O mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v$mihomo_version/mihomo-linux-amd64-v$mihomo_version.gz \
+    && echo "$mihomo_sha256  mihomo.gz" | sha256sum -c - \
+    && gunzip mihomo.gz \
+    && mv mihomo /usr/bin/mihomo \
+    && chmod +x /usr/bin/mihomo /usr/bin/dnslookup /usr/bin/sing-box \
+    && cd / && rm -rf /tmp/dl

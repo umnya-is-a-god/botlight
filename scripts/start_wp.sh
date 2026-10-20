@@ -10,7 +10,21 @@ WGCF_CONF="$WGCF_DIR/wgcf-profile.conf"
 WGCF_TOML="$WGCF_DIR/wgcf-account.toml"
 SOCKS_PORT="${SOCKS_PORT:-1080}"
 
-WARP_LICENSE_KEY=$(cat /config/pac.json | jq -r '.warp // empty')
+WARP_LICENSE_KEY=$(jq -r '.warp // empty' /config/pac.json)
+# goes into a sed expression below: key characters only
+case "$WARP_LICENSE_KEY" in
+    *[!A-Za-z0-9-]*) WARP_LICENSE_KEY= ;;
+esac
+
+# The socks proxy carries Xray client traffic: it must not reach the
+# server's internal networks or the host, even for a domain that resolves
+# to a private address. Replies and loopback (Docker DNS) stay allowed.
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12 \
+    192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/3; do
+    iptables -A OUTPUT -d $net -j REJECT
+done
 
 mkdir -p "$WGCF_DIR"
 cd "$WGCF_DIR"

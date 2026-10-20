@@ -91,6 +91,10 @@ function start()
 
     if (!empty($conf['includelist'])) {
         $domains = array_filter($conf['includelist'], fn($x) => $x == true);
+        // the PAC file is JavaScript run by clients: only plain domain names
+        // get in, whatever an imported list contains
+        $domains = array_filter($domains, fn($x, $k) => is_string($k)
+            && preg_match('~^(?=.{1,253}$)[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)+$~iD', $k), ARRAY_FILTER_USE_BOTH);
     }
     if (empty($domains)) {
         $text = "Empty domains. Delete pac files";
@@ -125,10 +129,10 @@ function start()
         $text .= $tail ? "$tail\n" : '';
 
         // create pac
-        $domains = json_encode($t);
+        $domains = json_encode($t, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
         $pac     = <<<PAC
                     function FindProxyForURL(t, e) {
-                        var n = JSON.parse('$domains'),
+                        var n = $domains,
                         r = e.match(/((?:.+\.)*(.+))\.([^.]+)$/);
                         if (r && n.hasOwnProperty(r[3]) && (n[r[3]].hasOwnProperty(r[1].length) && (-1 !== n[r[3]][r[1].length].indexOf(r[1])) || n[r[3]].hasOwnProperty(r[2].length) && (-1 !== n[r[3]][r[2].length].indexOf(r[2])))) {
                             return "SOCKS5 ~address~:~port~; DIRECT";
