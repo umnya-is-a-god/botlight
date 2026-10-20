@@ -7550,6 +7550,7 @@ DNS-over-HTTPS with IP:
             case 'si':
                 $c['route'] = $this->addRuleSet($c['route']);
                 $c['route'] = $this->createRuleSet($c['route'], $uid, $domain);
+                $c          = $this->singHttpClients($c);
                 if (!empty($c['route']['rules'])) {
                     foreach ($c['route']['rules'] as $k => $v) {
                         if (count($v) == 1 && array_key_exists('outbound', $v)) {
@@ -7728,6 +7729,59 @@ DNS-over-HTTPS with IP:
         return str_replace(array_keys($tags), array_values($tags), $subject);
     }
 
+    /**
+     * sing-box 1.14: remote rule-sets download through http_client instead of
+     * the deprecated download_detour (removed in 1.16). Converts every
+     * download_detour (also ones coming from user templates) and declares the
+     * referenced clients in top-level http_clients. A client without detour
+     * dials directly, which is what download_detour "direct" meant.
+     */
+    public function singHttpClients(array $c): array
+    {
+        if (empty($c['route']['rule_set'])) {
+            return $c;
+        }
+        $clients = [];
+        foreach ($c['http_clients'] ?? [] as $v) {
+            if (!empty($v['tag'])) {
+                $clients[$v['tag']] = true;
+            }
+        }
+        $add = function ($tag, $detour = null) use (&$c, &$clients) {
+            if (empty($clients[$tag])) {
+                $client = ['tag' => $tag];
+                if ($detour !== null) {
+                    $client['detour'] = $detour;
+                }
+                $c['http_clients'][] = $client;
+                $clients[$tag]       = true;
+            }
+            return $tag;
+        };
+        foreach ($c['route']['rule_set'] as $k => $v) {
+            if (($v['type'] ?? '') != 'remote') {
+                continue;
+            }
+            if (array_key_exists('download_detour', $v)) {
+                $detour = $v['download_detour'];
+                unset($c['route']['rule_set'][$k]['download_detour']);
+                if (empty($v['http_client'])) {
+                    $c['route']['rule_set'][$k]['http_client'] = (empty($detour) || $detour == 'direct') ? 'direct' : "via-$detour";
+                }
+                if (!empty($detour) && $detour != 'direct') {
+                    $add("via-$detour", $detour);
+                }
+            }
+            if (($c['route']['rule_set'][$k]['http_client'] ?? '') == 'direct') {
+                $add('direct');
+            }
+        }
+        if (!empty($clients['direct']) && empty($c['route']['default_http_client'])) {
+            $c['route']['default_http_client'] = 'direct';
+        }
+        return $c;
+    }
+
     public function addRuleSet($route)
     {
         if (!empty($route['rules'])) {
@@ -7747,7 +7801,7 @@ DNS-over-HTTPS with IP:
                                 "type"            => "remote",
                                 "format"          => "binary",
                                 "url"             => $url,
-                                "download_detour" => "direct",
+                                "http_client"     => "direct",
                                 "update_interval" => $time
                             ];
                             $route['rules'][$t[$type]]['rule_set'][] = $k;
@@ -7834,7 +7888,7 @@ DNS-over-HTTPS with IP:
                         "update_interval" => $r['interval'],
                         "type"            => "remote",
                         "format"          => "binary",
-                        "download_detour" => "direct",
+                        "http_client"     => "direct",
                     ];
                     $route['rules'][$k]['rule_set'][] = $r['name'];
                 }
