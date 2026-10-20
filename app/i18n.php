@@ -5,18 +5,6 @@ $i = [
         'en' => 'Warp',
         'ru' => 'Warp',
     ],
-    'wg_title'             => [
-        'en' => 'Wireguard',
-        'ru' => 'Wireguard',
-    ],
-    'amnezia'             => [
-        'en' => 'Amnezia',
-        'ru' => 'Amnezia',
-    ],
-    'sh_title'             => [
-        'en' => 'Shadowsocks',
-        'ru' => 'Shadowsocks',
-    ],
     'ad_title'             => [
         'en' => 'AdGuard',
         'ru' => 'AdGuard',
@@ -73,29 +61,13 @@ $i = [
         'en' => 'add peer',
         'ru' => 'добавить клиента',
     ],
-    'all traffic'          => [
-        'en' => 'all traffic',
-        'ru' => 'весь трафик',
-    ],
     'subnet'               => [
         'en' => 'subnet',
         'ru' => 'подсеть',
     ],
-    'proxy ip'             => [
-        'en' => 'proxy ip',
-        'ru' => 'айпи прокси',
-    ],
     'rename'               => [
         'en' => 'rename',
         'ru' => 'переименовать',
-    ],
-    'show QR'              => [
-        'en' => 'show QR',
-        'ru' => 'показать QR',
-    ],
-    'download config'      => [
-        'en' => 'download config',
-        'ru' => 'скачать настройки',
     ],
     'install domain'       => [
         'en' => 'install domain',
@@ -185,14 +157,6 @@ $i = [
         'en' => 'reset nginx',
         'ru' => 'сбросить nginx',
     ],
-    'set internal dns'     => [
-        'en' => 'set internal dns',
-        'ru' => 'установить внутренний dns',
-    ],
-    'delete internal dns'  => [
-        'en' => 'delete internal dns',
-        'ru' => 'удалить внутренний dns',
-    ],
     'on'  => [
         'en' => '🟢',
         'ru' => '🟢',
@@ -200,10 +164,6 @@ $i = [
     'off'  => [
         'en' => '🔴',
         'ru' => '🔴',
-    ],
-    'torrent'  => [
-        'en' => 'torrents',
-        'ru' => 'торренты',
     ],
     'blinkmenuon'  => [
         'en' => 'blinkmenu on',
@@ -217,37 +177,9 @@ $i = [
         'en' => 'listSubnet',
         'ru' => 'список подсетей',
     ],
-    'AllowedIPs'  => [
-        'en' => 'AllowedIPs',
-        'ru' => 'AllowedIPs',
-    ],
     'calc'  => [
         'en' => 'calc CIDR',
         'ru' => 'calc CIDR',
-    ],
-    'mtproto'  => [
-        'en' => 'MTProto',
-        'ru' => 'MTProto',
-    ],
-    'generateSecret'  => [
-        'en' => 'generateSecret',
-        'ru' => 'сгенерировать ключ',
-    ],
-    'setSecret'  => [
-        'en' => 'setSecret',
-        'ru' => 'установить свой ключ',
-    ],
-    'setAdTag'  => [
-        'en' => 'set adtag',
-        'ru' => 'установить adtag',
-    ],
-    'defaultDNS'  => [
-        'en' => 'defaultDNS',
-        'ru' => 'дефолтный днс',
-    ],
-    'defaultMTU'  => [
-        'en' => 'defaultMTU',
-        'ru' => 'дефолтный MTU',
     ],
     'debug'  => [
         'en' => 'debug mode',
@@ -289,21 +221,9 @@ $i = [
         'en' => 'pagination',
         'ru' => 'пагинация',
     ],
-    'exchange'  => [
-        'en' => 'client isolation',
-        'ru' => 'изоляция клиентов',
-    ],
     'ocserv'  => [
         'en' => 'OpenConnect',
         'ru' => 'OpenConnect',
-    ],
-    'naive'  => [
-        'en' => 'NaiveProxy',
-        'ru' => 'NaiveProxy',
-    ],
-    'change login'  => [
-        'en' => 'change login',
-        'ru' => 'изменить логин',
     ],
     'change secret'  => [
         'en' => 'change secret',
