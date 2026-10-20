@@ -130,7 +130,6 @@ services:
             - ./update:/update
             - ./.git:/.git
             - ./docker-compose.override.yml:/docker/compose
-            - /var/run/docker.sock:/var/run/docker.sock:ro
             - warp:/etc/warp
         environment:
             IP: ${IP}

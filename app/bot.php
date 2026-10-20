@@ -544,32 +544,25 @@ class Bot
             ];
         }
 
-        foreach ($c['inbounds'] as $v) {
-            if ($v['tag'] == 'wg-in') {
-                $wg = true;
-                break;
-            }
-        }
-        if (empty($wg)) {
-            $c['inbounds'][] = [
-                "port"     => 10808,
-                "protocol" => "socks",
-                "settings" => [
-                    "auth" => "noauth",
-                    "udp"  => true,
-                    "ip"   => "0.0.0.0"
-                ],
-                "tag"      => "wg-in",
-                "sniffing" => [
-                    "destOverride" => [
-                        "http",
-                        "tls",
-                        "quic"
-                    ],
-                    "enabled" => true
-                ]
-            ];
-        }
+        // the unauthenticated socks inbound for the removed WireGuard containers
+        $c['inbounds'] = array_values(array_filter($c['inbounds'], fn($e) => ($e['tag'] ?? '') != 'wg-in'));
+
+        // clients must not reach the server's internal networks (containers,
+        // php-fpm, sshd, xray api) or the host: keep the api rule first,
+        // then block private destinations, then the user rules
+        $private = [
+            'ruleTag'     => 'private-block',
+            'type'        => 'field',
+            'outboundTag' => 'block',
+            'ip'          => [
+                '0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16',
+                '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10',
+            ],
+        ];
+        $rules = $c['routing']['rules'] ?? [];
+        $api   = array_filter($rules, fn($e) => ($e['outboundTag'] ?? '') == 'api');
+        $other = array_filter($rules, fn($e) => ($e['outboundTag'] ?? '') != 'api' && ($e['ruleTag'] ?? '') != 'private-block');
+        $c['routing']['rules'] = array_values(array_merge($api, [$private], $other));
         $c['stats'] = new stdClass();
         $c['api'] = [
             'services' => ['StatsService'],
