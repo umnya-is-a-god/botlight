@@ -23,7 +23,7 @@
 * Telegram API: таймауты cURL 5/15 с, бот больше не зависает намертво.
 * sing-box 1.14: `http_client` и `http_clients` вместо `download_detour`.
 * Шаблоны `origin` заменены новыми: sing-box 1.14 и mihomo для Android/Windows, `authentication` = `123:321`.
-* Главное меню: Vless + OpenConnect, AdGuard + PAC, Warp, Settings.
+* Главное меню: Vless + OpenConnect, AdGuard + PAC, Warp + Settings.
 * Образы собираются на сервере (`botlight/vpnbot-*:local`), а не скачиваются готовыми у автора. Версии ядер под контролем: Xray берётся последний стабильный релиз (или закреплённый в `.env`, `XRAY_VERSION`), в контейнере `php` sing-box 1.14.3 (сборка rule-set'ов) и mihomo 1.19.32. Убран неиспользуемый Qt (`py3-qt5`).
 * Исправлен разбор вывода `xray x25519`: на новом сервере публичный ключ Reality получался пустым.
 * Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.

@@ -2837,10 +2837,6 @@ DNS-over-HTTPS with IP:
                                 'text'          => $this->i18n('warp'),
                                 'callback_data' => "/warp",
                             ],
-                        ],
-                    ],
-                    [
-                        [
                             [
                                 'text'          => $this->i18n('config'),
                                 'callback_data' => "/menu config",
