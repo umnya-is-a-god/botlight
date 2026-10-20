@@ -1,8 +1,9 @@
 ARG image
 FROM $image
+ARG xray_version
 RUN apk add openssh openssl jq curl \
     && mkdir /root/.ssh \
-    && wget -O Xray-linux-64.zip $(wget -q -O - https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep browser_download_url | cut -d\" -f4 | egrep 'Xray-linux-64.zip$') \
+    && wget -O Xray-linux-64.zip https://github.com/XTLS/Xray-core/releases/download/${xray_version}/Xray-linux-64.zip \
     && unzip Xray-linux-64.zip \
     && mv xray /usr/bin/ \
     && rm Xray-linux-64.zip \

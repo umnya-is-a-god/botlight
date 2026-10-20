@@ -20,7 +20,8 @@ volumes:
 
 services:
     up:
-        image: mercurykd/vpnbot-ng:1.1
+        image: botlight/vpnbot-ng:local
+        pull_policy: build
         build:
             context: dockerfile
             dockerfile: nginx.dockerfile
@@ -58,7 +59,8 @@ services:
                 ipv4_address: 10.10.0.10
         logging: *default-logging
     ng:
-        image: mercurykd/vpnbot-ng:1.1
+        image: botlight/vpnbot-ng:local
+        pull_policy: build
         build:
             context: dockerfile
             dockerfile: nginx.dockerfile
@@ -106,7 +108,8 @@ services:
             timeout: 5s
             retries: 3
     php:
-        image: mercurykd/vpnbot-php:1.7
+        image: botlight/vpnbot-php:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/php.dockerfile
             args:
@@ -156,7 +159,8 @@ services:
             timeout: 5s
             retries: 5
     service:
-        image: mercurykd/vpnbot-php:1.7
+        image: botlight/vpnbot-php:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/php.dockerfile
             args:
@@ -201,7 +205,8 @@ services:
             - oc
             - dnstt
     ad:
-        image: mercurykd/vpnbot-ad:1.4
+        image: botlight/vpnbot-ad:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/adguard.dockerfile
             args:
@@ -236,11 +241,13 @@ services:
         entrypoint: ["/bin/sh", "/start_ad.sh"]
         logging: *default-logging
     xr:
-        image: mercurykd/vpnbot-xr:1.7
+        image: botlight/vpnbot-xr:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/xray.dockerfile
             args:
                 image: ${IMAGE}
+                xray_version: ${XRAY_VERSION}
         volumes:
             - ./config/.profile:/root/.ashrc:ro
             - ./ssh:/ssh
@@ -267,7 +274,8 @@ services:
                 ipv4_address: 10.10.1.9
         logging: *default-logging
     oc:
-        image: mercurykd/vpnbot-oc:1.2
+        image: botlight/vpnbot-oc:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/ocserv.dockerfile
             args:
@@ -300,7 +308,8 @@ services:
                 ipv4_address: 10.10.0.11
         logging: *default-logging
     wp:
-        image: mercurykd/vpnbot-wg:1.5
+        image: botlight/vpnbot-wg:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/wireguard.dockerfile
             args:
@@ -336,7 +345,8 @@ services:
                 ipv4_address: 10.10.0.13
         logging: *default-logging
     dnstt:
-        image: mercurykd/vpnbot-dnstt:1.0
+        image: botlight/vpnbot-dnstt:local
+        pull_policy: build
         build:
             dockerfile: dockerfile/dnstt.dockerfile
             args:

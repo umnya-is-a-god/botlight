@@ -20,6 +20,8 @@
 * sing-box 1.14: `http_client` и `http_clients` вместо `download_detour`.
 * Шаблоны `origin` заменены новыми: sing-box 1.14 и mihomo для Android/Windows, `authentication` = `123:321`.
 * Главное меню: Vless + OpenConnect, AdGuard + PAC, DNSTT + Warp.
+* Образы собираются на сервере (`botlight/vpnbot-*:local`), а не скачиваются готовыми у автора. Версии ядер под контролем: Xray задаётся в `.env` (`XRAY_VERSION`), в контейнере `php` sing-box 1.14.3 (сборка rule-set'ов) и mihomo 1.19.32. Убран неиспользуемый Qt (`py3-qt5`).
+* Исправлен разбор вывода `xray x25519`: на новом сервере публичный ключ Reality получался пустым.
 * Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.
 
 ### Переход с исходного vpnbot
@@ -38,11 +40,15 @@ make r
 
 ## Установка с нуля
 
-Для чистого сервера Debian/Ubuntu, выполняется от root. Бот ставится в `/root/vpnbot`.
+Для чистого сервера Debian/Ubuntu, выполняется от root. Бот ставится в `/root/vpnbot`. Первый запуск занимает несколько минут: образы контейнеров собираются на сервере.
 
 ```shell
 wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY
 ```
+
+#### Версия Xray
+
+Указана в `.env` (`XRAY_VERSION=v26.9.30`). Чтобы сменить: поправьте значение и выполните `make r`, образ пересоберётся.
 
 #### Обновление
 

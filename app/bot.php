@@ -3825,7 +3825,7 @@ DNS-over-HTTPS with IP:
         foreach ($r as $v) {
             if (!empty($v['RepoTags'])) {
                 foreach ($v['RepoTags'] as $j) {
-                    if (preg_match('~^mercurykd/vpnbot~', $j)) {
+                    if (preg_match('~^(mercurykd|botlight)/vpnbot~', $j)) {
                         $i[] = $v['Id'];
                         break;
                     }
@@ -3834,7 +3834,7 @@ DNS-over-HTTPS with IP:
         }
         $r = $this->dockerApi('/containers/json?all=1');
         foreach ($r as $v) {
-            if (preg_match('~^mercurykd/vpnbot~', $v['Image'])) {
+            if (preg_match('~^(mercurykd|botlight)/vpnbot~', $v['Image'])) {
                 $c[] = $v['ImageID'];
             }
         }
@@ -6463,10 +6463,13 @@ DNS-over-HTTPS with IP:
         if (empty($p['xray'])) {
             $shortId = trim($this->ssh('openssl rand -hex 8', 'xr'));
             $keys    = $this->ssh('xray x25519', 'xr');
-            preg_match('~^PrivateKey:\s([^\s]+)~m', $keys, $m);
-            $private = trim($m[1]);
-            preg_match('~^Password]\s(PublicKey):\s([^\s]+)~m', $keys, $m);
-            $public = trim($m[1]);
+            // output differs between xray versions:
+            // "Private key: / Public key:", "PrivateKey: / Password:",
+            // "PrivateKey: / Password (PublicKey):"
+            preg_match('~^Private\s?key:\s*(\S+)~mi', $keys, $m);
+            $private = trim($m[1] ?? '');
+            preg_match('~^(?:Public\s?key|Password(?:\s*\(PublicKey\))?):\s*(\S+)~mi', $keys, $m);
+            $public = trim($m[1] ?? '');
             $p['xray'] = $public;
             $p['reality']['shortId']    = $shortId;
             $p['reality']['privateKey'] = $private;
