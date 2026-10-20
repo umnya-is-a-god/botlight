@@ -4392,10 +4392,10 @@ DNS-over-HTTPS with IP:
 
     public function warpStatus()
     {
-        // through the WARP socks proxy, like Xray's warp outbound; by IP (no
-        // DNS lookup), HTTPS because plain HTTP gets a redirect; WARP from the
-        // server can take a few seconds
-        $st = $this->ssh('curl -s -m 8 -x socks5h://wp:1080 https://1.1.1.1/cdn-cgi/trace', 'xr');
+        // through the WARP socks proxy, like Xray's warp outbound (the name is
+        // resolved by microsocks); a request through WARP can take a few
+        // seconds. 1.1.1.1 does not work here: HTTP redirects, HTTPS hangs
+        $st = $this->ssh('curl -s -m 8 -x socks5h://wp:1080 https://cloudflare.com/cdn-cgi/trace', 'xr');
         preg_match('~warp=(\w+)~', $st, $m);
         return trim($m[1]) ?: 'off';
     }
