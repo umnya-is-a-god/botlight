@@ -15,6 +15,7 @@
 * В меню маршрутов Vless — списки subnet, process, package.
 * Мёртвый код: около 130 методов, около 20 маршрутов без кнопок, устаревший `offWarp` для старого клиента Cloudflare, недоделанные списки exclude/reverse/subzones, около 35 строк перевода.
 * Кнопки и функции: «tun lists» (списки package/process для TUN в mihomo), «set timer» (срок действия пользователя Xray и автоотключение), «qr short» (QR короткой ссылки vless; QR для sing-box остался) и «domains» в маршрутах Xray (второй вход в список доменов PAC; список редактируется в меню PAC).
+* Ссылка импорта в Rabbit Hole (`import://rabbit-hole`).
 * PAC-файлы для браузера и Shadowsocks-Android (ссылки, кнопки, их сборка `updatepac.php` и выдача по `/pac…?t=pac|mpac`), кнопки импорта готовых списков «community antifilter» и «ru-bundle», скрытая проверка адреса по списку. Список доменов PAC остался: он попадает в подписки (`~pac~` в шаблонах), правки применяются сразу.
 
 ### Изменено

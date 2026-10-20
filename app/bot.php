@@ -4567,15 +4567,13 @@ DNS-over-HTTPS with IP:
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
-        $text[] = "Menu -> " . $this->i18n('xray') . " -> {$c['email']}\n";
+        $name   = rawurlencode($c['email']);
+        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars($c['email']) . "\n";
         if (file_exists(__DIR__ . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
-        $text[] = "<pre><code>{$this->linkXray($i)}</code></pre>\n";
-
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#{$c['email']}'>import://sing-box</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#{$c['email']}'>import://mihomo</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=rh&s={$c['id']}#{$c['email']}'>import://rabbit-hole</a>";
+        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#$name'>import://sing-box</a>";
+        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#$name'>import://mihomo</a>";
 
         $si = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
@@ -4588,8 +4586,9 @@ DNS-over-HTTPS with IP:
             's' => $c['id'],
         ]));
 
-        $text[] = "\nsing-box config: <pre><code>$si</code></pre>";
-        $text[] = "mihomo config: <pre><code>$cl</code></pre>";
+        $text[] = "\nVless:\n<pre><code>{$this->linkXray($i)}</code></pre>";
+        $text[] = "\nSing-box:\n<pre><code>$si</code></pre>";
+        $text[] = "\nMihomo:\n<pre><code>$cl</code></pre>";
 
         $st       = $this->getXrayStats();
         $download = $this->getBytes($st['users'][$i]['global']['download'] + $st['users'][$i]['session']['download']);
@@ -4785,9 +4784,6 @@ DNS-over-HTTPS with IP:
                     exit;
                 case 'c':
                     header("Location: clash://install-config/?url=$cl&overwrite=no&name=$email");
-                    exit;
-                case 'rh':
-                    header("Location: rabbithole://add/$cl");
                     exit;
             }
         }
