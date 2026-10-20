@@ -12,8 +12,6 @@
 /sftp-config.json
 /tg.pyr
 /todo.todo
-/app/zapretlists/*
-!/app/zapretlists/.gitkeep
 .vscode/
 .idea/
 mirror/.env

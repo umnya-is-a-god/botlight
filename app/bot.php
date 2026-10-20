@@ -243,12 +243,6 @@ class Bot
             case preg_match('~^/deleteYes (\w+)$~', $this->input['callback'], $m):
                 $this->deleteYes($m[1]);
                 break;
-            case preg_match('~^/addCommunityFilter$~', $this->input['callback'], $m):
-                $this->addCommunityFilter();
-                break;
-            case preg_match('~^/addLegizFilter$~', $this->input['callback'], $m):
-                $this->addLegizFilter();
-                break;
             case preg_match('~^/pacMenu (\d+)$~', $this->input['callback'], $m):
                 $this->pacMenu($m[1]);
                 break;
@@ -365,9 +359,6 @@ class Bot
                 break;
             case preg_match('~^/addupstream$~', $this->input['callback'], $m):
                 $this->addupstream();
-                break;
-            case preg_match('~^/checkurl$~', $this->input['callback'], $m):
-                $this->checkurl();
                 break;
             case preg_match('~^/setSSL (\w+)$~', $this->input['callback'], $m):
                 $this->setSSL($m[1]);
@@ -604,44 +595,7 @@ class Bot
         $this->menu('config');
     }
 
-    public function checkurl()
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter url",
-            $this->input['message_id'],
-            reply: 'enter url',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'urlcheck',
-            'args'           => [],
-        ];
-    }
 
-    public function urlcheck($url)
-    {
-        if (file_exists(__DIR__ . '/zapretlists/mpac')) {
-            $domains = explode("\n", file_get_contents(__DIR__ . '/zapretlists/mpac'));
-            foreach ($domains as $k => $v) {
-                if (preg_match("~$v~", $url)) {
-                    $flag = 1;
-                    break;
-                }
-            }
-            if ($flag) {
-                $text = "$url\nmatch";
-            } else {
-                $text = "$url\nnot match";
-            }
-        } else {
-            $text = 'no file, update pac';
-        }
-        $this->update($this->input['chat'], $this->input['message_id'], $text);
-        sleep(3);
-        $this->menu('pac');
-    }
 
     public function changeCamouflage()
     {
@@ -1296,7 +1250,6 @@ class Bot
                 $out[] = 'update pac';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 $this->setPacConf($json['pac']);
-                $this->pacUpdate('1');
             }
             // ad
             if (!empty($json['ad'])) {
@@ -1955,7 +1908,7 @@ DNS-over-HTTPS with IP:
     {
         switch ($type) {
             case 'includelist':
-                $this->pacUpdate();
+                $this->pacMenu($page);
                 break;
             case 'blocklist':
                 $this->xrayUpdateRules();
@@ -2279,99 +2232,14 @@ DNS-over-HTTPS with IP:
         );
     }
 
-    public function sizeFormat($bytes)
-    {
-        if (floor($bytes / 1024 ** 2) > 0) {
-            $r = round($bytes / 1024 ** 2, 2) . 'MB';
-        } elseif (floor($bytes / 1024) > 0) {
-            $r = round($bytes / 1024, 2) . 'KB';
-        } else {
-            $r = $bytes . 'B';
-        }
-        return $r;
-    }
 
-    public function addCommunityFilter()
-    {
-        $pac = $this->getPacConf();
-        $l   = array_filter(array_map(fn($e) => trim($e), explode("\n", file_get_contents('https://community.antifilter.download/list/domains.lst'))));
-        if (!empty($l)) {
-            foreach ($l as $k => $v) {
-                $pac['includelist'][$v] = true;
-            }
-        }
-        $this->setPacConf($pac);
-        $this->pacUpdate();
-    }
 
-    public function addLegizFilter()
-    {
-        $pac = $this->getPacConf();
-        $l   = array_filter(array_map(fn($e) => trim($e), explode("\n", file_get_contents('https://github.com/legiz-ru/sb-rule-sets/raw/main/ru-bundle.lst'))));
-        if (!empty($l)) {
-            foreach ($l as $k => $v) {
-                $pac['includelist'][$v] = true;
-            }
-        }
-        $this->setPacConf($pac);
-        $this->pacUpdate();
-    }
 
     public function pacMenu($page = 0)
     {
-        $mpac   = stat(__DIR__ . '/zapretlists/mpac');
-        $pac    = stat(__DIR__ . '/zapretlists/pac');
-        $conf   = $this->getPacConf();
-        $ip     = $this->getDomain();
-        $hash   = $this->getHashBot();
-        $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
-        $text   = <<<text
-                Menu -> pac
-                text;
-        if ($pac) {
-            $pac['time']  = date('d.m.Y H:i:s', $pac['mtime']);
-            $pac['sz']    = $this->sizeFormat($pac['size']);
-            $text .= <<<text
-
-
-                    <b>PAC ({$pac['time']} / {$pac['sz']}):</b>
-                    <code>$scheme://$ip/pac$hash?a=127.0.0.1&p=1080</code>
-                    text;
-            $urls[0][] = [
-                'text'    => "PAC",
-                'web_app' => ['url'  => "https://$ip/pac$hash&a=127.0.0.1&p=1080"],
-            ];
-        }
-        if ($mpac) {
-            $mpac['time']  = date('d.m.Y H:i:s', $mpac['mtime']);
-            $mpac['sz']    = $this->sizeFormat($mpac['size']);
-            $text .= <<<text
-
-
-                    <b>Shadowsocks-android PAC ({$mpac['time']} / {$mpac['sz']}):</b>
-                    <code>$scheme://$ip/pac$hash&t=mpac</code>
-                    text;
-            $urls[0][] = [
-                'text'    => "PAC ShadowSocks(Android)",
-                'web_app' => ['url'  => "https://$ip/pac$hash&t=mpac"],
-            ];
-        }
-        if ($urls) {
-            $data = array_values($urls);
-        }
-        $data[] = [
-            [
-                'text'          => $this->i18n('add') . ' community antifilter',
-                'callback_data' => "/addCommunityFilter",
-            ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('add') . ' ru-bundle',
-                'callback_data' => "/addLegizFilter",
-            ],
-        ];
-        $data   = array_merge($data, $this->listPac('includelist', $page, 'pacMenu')[0]);
+        // the domain list goes into the subscriptions (~pac~ in templates)
+        $text = 'Menu -> pac';
+        $data = $this->listPac('includelist', $page, 'pacMenu')[0];
         $data[] = [
             [
                 'text'          => $this->i18n('back'),
@@ -2393,7 +2261,7 @@ DNS-over-HTTPS with IP:
         $this->setPacConf($c);
         switch ($type) {
             case 'includelist':
-                $this->pacUpdate();
+                $this->pacMenu();
                 break;
             case 'blocklist':
                 $this->xtlsblock();
@@ -2646,10 +2514,6 @@ DNS-over-HTTPS with IP:
         $this->backXtlsList($type, $page);
     }
 
-    public function pacUpdate($import = '')
-    {
-        exec('php updatepac.php start ' . implode(' ', array_map(fn($e) => escapeshellarg((string) $e), [$this->input['chat'], $this->input['message_id'], $this->input['callback_id'], $import])) . ' > /dev/null &');
-    }
 
     public function i18n(string $menu): string
     {

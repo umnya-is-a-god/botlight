@@ -87,9 +87,7 @@ switch (true) {
                 }
             }
         }
-        $type    = is_string($_GET['t'] ?? null) ? $_GET['t'] : 'pac';
-        $address = preg_match('~^[A-Za-z0-9.:\[\]-]{1,253}$~D', $_GET['a'] ?? '') ? $_GET['a'] : '127.0.0.1';
-        $port    = preg_match('~^\d{1,5}$~D', $_GET['p'] ?? '') ? $_GET['p'] : '1080';
+        $type    = is_string($_GET['t'] ?? null) ? $_GET['t'] : '';
         switch ($type) {
             case 's':
             case 'si':
@@ -165,20 +163,8 @@ switch (true) {
                 exit;
 
             default:
-                // only the generated PAC files; $type must never become a path
-                if (in_array($type, ['pac', 'mpac'], true) && file_exists($file = __DIR__ . "/zapretlists/$type")) {
-                    $pac = file_get_contents($file);
-                    header('Content-Type: text/plain');
-                    echo str_replace([
-                        '~address~',
-                        '~port~',
-                    ], [
-                        $address,
-                        $port,
-                    ], $pac);
-                    exit;
-                }
-                break;
+                header('404', true, 404);
+                exit;
         }
         break;
 
