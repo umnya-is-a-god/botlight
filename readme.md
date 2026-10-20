@@ -23,11 +23,24 @@
 
 ### Обновление сервера с исходного vpnbot
 
+Репозиторий приватный: серверу нужен deploy key с доступом на чтение (Settings → Deploy keys).
+
+```shell
+ssh-keygen -t ed25519 -f /root/.ssh/botlight -N ''
+cat /root/.ssh/botlight.pub   # добавить в Deploy keys, без write access
+cat >> /root/.ssh/config <<'CFG'
+Host github-botlight
+    HostName github.com
+    IdentityFile /root/.ssh/botlight
+CFG
+```
+
 Перед `make r` уберите из `docker-compose.override.yml` секции удалённых сервисов (`wg`, `wg1`, `np`, `tg`, `ss`, `proxy`, `hy`), если они там есть.
 
 ```shell
 cd /root/vpnbot
-git fetch origin && git reset --hard origin/lightweightbot
+git remote set-url origin git@github-botlight:umnya-is-a-god/botlight.git
+git fetch origin --tags && git checkout -f -B lightweightbot origin/lightweightbot
 make r
 ```
 
