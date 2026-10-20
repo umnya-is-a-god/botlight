@@ -1167,8 +1167,11 @@ class Bot
                 $commits    = $this->newCommits();
                 if (!empty($last) && !empty($commits) && $last != $this->last) {
                     $this->last = $last;
+                    $current    = trim(exec('git -C / show HEAD:VERSION 2>/dev/null'));
+                    $new        = trim(exec('git -C / show @{u}:VERSION 2>/dev/null'));
+                    $title      = $new && $new != $current ? "v$current → v$new\n" : '';
                     foreach ($c['admin'] as $k => $v) {
-                        $this->send($v, "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits)), 0, [
+                        $this->send($v, $title . "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits)), 0, [
                             [
                                 [
                                     'text'          => 'changelog',

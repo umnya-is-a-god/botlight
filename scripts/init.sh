@@ -30,9 +30,6 @@ fi
 
 git clone -b "$BRANCH" https://github.com/umnya-is-a-god/botlight.git "$DIR"
 cd "$DIR"
-# the bot version (VER, container names) comes from the upstream tags
-git fetch https://github.com/mercurykd/vpnbot.git --tags
-
 echo "<?php
 
 \$c = ['key' => '$KEY'];" > ./app/config.php

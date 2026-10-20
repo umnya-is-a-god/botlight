@@ -2,6 +2,8 @@
 
 Облегчённая версия [mercurykd/vpnbot](https://github.com/mercurykd/vpnbot) (ветка `dev`). Оставлены только Vless (Xray), OpenConnect, AdGuard, Warp, PAC и DNSTT.
 
+Текущая версия указана в файле `VERSION` и показывается в главном меню бота.
+
 ### Удалено
 
 * Контейнеры WireGuard ×2 (`wg`, `wg1`), NaiveProxy (`np`), MTProto (`tg`), Shadowsocks (`ss` + `proxy`), Hysteria (`hy`). Вместе с ними их меню, кнопки, статусы, порты, бэкап, скрипты, dockerfile и конфиги.
@@ -32,7 +34,6 @@
 cd /root/vpnbot
 git remote set-url origin https://github.com/umnya-is-a-god/botlight.git
 git fetch origin && git checkout -f -B main origin/main
-git fetch https://github.com/mercurykd/vpnbot.git --tags   # версии бота берутся из тегов автора
 make r
 ```
 
