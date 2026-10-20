@@ -41,10 +41,6 @@ $i = [
         'en' => 'admin',
         'ru' => 'админа',
     ],
-    'menu'                 => [
-        'en' => 'Menu',
-        'ru' => 'Меню',
-    ],
     'add peer'             => [
         'en' => 'add peer',
         'ru' => 'добавить клиента',
@@ -89,14 +85,6 @@ $i = [
         'en' => 'check DNS',
         'ru' => 'проверить DNS',
     ],
-    'update'               => [
-        'en' => 'update',
-        'ru' => 'обновить',
-    ],
-    'check url'            => [
-        'en' => 'check url',
-        'ru' => 'проверить домен',
-    ],
     'lang'                 => [
         'en' => 'language',
         'ru' => 'язык интерфейса',
@@ -104,10 +92,6 @@ $i = [
     'domain explain'       => [
         'en' => 'Some clients require a valid certificate when connecting, such as windows 11 DoH or ShadowSocks Android (PAC url), this requires a domain',
         'ru' => 'Некоторым клиентам требуется валидный сертификат при подключении, например Windows 11 DoH или ShadowSocks Android (URL-адрес PAC), для этого требуется домен',
-    ],
-    'reset nginx'          => [
-        'en' => 'reset nginx',
-        'ru' => 'сбросить nginx',
     ],
     'on'  => [
         'en' => '🟢',
@@ -125,10 +109,6 @@ $i = [
         'en' => 'calc CIDR',
         'ru' => 'calc CIDR',
     ],
-    'debug'  => [
-        'en' => 'debug mode',
-        'ru' => 'режим отладки',
-    ],
     'backup'  => [
         'en' => 'auto backup',
         'ru' => 'автобэкап',
@@ -136,10 +116,6 @@ $i = [
     'logs'  => [
         'en' => 'logs',
         'ru' => 'логи',
-    ],
-    'clear'  => [
-        'en' => 'clear',
-        'ru' => 'очистить',
     ],
     'xray'  => [
         'en' => 'Vless',
@@ -172,10 +148,6 @@ $i = [
     'dns'  => [
         'en' => 'dns',
         'ru' => 'днс',
-    ],
-    'mirror'  => [
-        'en' => 'mirror',
-        'ru' => 'зеркало',
     ],
     'download'  => [
         'en' => 'download',

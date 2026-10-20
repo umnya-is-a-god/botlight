@@ -123,7 +123,7 @@ class Bot
     public function callbackCheck()
     {
         if (empty($this->callback) && !empty($this->input['callback_id'])) {
-            $this->answer($this->input['callback_id'], $GLOBALS['debug'] ? $this->input['callback'] : false);
+            $this->answer($this->input['callback_id'], !empty($GLOBALS['debug']) ? $this->input['callback'] : false);
         }
     }
 
@@ -576,7 +576,7 @@ class Bot
             'download' => 0,
             'upload'   => 0,
         ];
-        foreach ($p['users'] as $k => $v) {
+        foreach ($p['users'] ?? [] as $k => $v) {
             $p['users'][$k]['global']['download']  += $v['session']['download'];
             $p['users'][$k]['session']['download']  = 0;
             $p['users'][$k]['global']['upload']    += $v['session']['upload'];
@@ -784,6 +784,10 @@ class Bot
 
     public function chocpass($pass)
     {
+        if (!$this->validSecret($pass = trim((string) $pass))) {
+            $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
+            return;
+        }
         $pac = $this->getPacConf();
         $pac['ocserv'] = $pass;
         $this->setPacConf($pac);
@@ -811,8 +815,12 @@ class Bot
         ];
     }
 
-    public function importListFile($message = '', $type)
+    public function importListFile($message, $type)
     {
+        if (empty($this->input['file_id'])) {
+            $this->send($this->input['chat'], 'send the list as a file');
+            return;
+        }
         $r = $this->request('getFile', ['file_id' => $this->input['file_id']]);
         $f = file_get_contents($this->file . $r['result']['file_path']);
         if (!empty($f)) {
@@ -1221,9 +1229,20 @@ class Bot
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
             'start_callback' => $this->input['callback_id'],
-            'callback'       => 'importFile',
+            'callback'       => 'importFromChat',
             'args'           => [],
         ];
+    }
+
+    // reply to the "send the backup" prompt: the file comes from the message,
+    // the typed text (if any) is ignored
+    public function importFromChat($text = '')
+    {
+        if (empty($this->input['file_id'])) {
+            $this->send($this->input['chat'], 'send the backup as a file');
+            return;
+        }
+        $this->importFile();
     }
 
     public function importFile($file = false)
@@ -1653,9 +1672,16 @@ class Bot
 
     public function addAdmin($id)
     {
+        // a Telegram user id: digits only
+        if (!preg_match('~^\d{1,20}$~D', $id = trim((string) $id))) {
+            $this->send($this->input['chat'], 'wrong id: digits only');
+            return;
+        }
         $file = __DIR__ . '/config.php';
         require $file;
-        $c['admin'][] = $id;
+        if (!in_array((int) $id, array_map('intval', $c['admin'] ?? []), true)) {
+            $c['admin'][] = (int) $id;
+        }
         file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
         $this->menu('config');
     }
@@ -1664,7 +1690,15 @@ class Bot
     {
         $file = __DIR__ . '/config.php';
         require $file;
-        unset($c['admin'][array_search($id, $c['admin'])]);
+        $k = array_search((int) $id, array_map('intval', $c['admin'] ?? []), true);
+        // never the last admin: with none left the next person to write to
+        // the bot would become admin
+        if ($k === false || count($c['admin']) < 2) {
+            $this->answer($this->input['callback_id'], $k === false ? 'no such admin' : 'the last admin cannot be removed', true);
+            return;
+        }
+        unset($c['admin'][$k]);
+        $c['admin'] = array_values($c['admin']);
         file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
         $this->menu('config');
     }
@@ -2148,6 +2182,7 @@ DNS-over-HTTPS with IP:
                     $exclude[$k] = [ip2long($t[0]), ip2long($t[0]) + (1 << (32 - $t[1])) - 1];
                 }
             }
+            require_once __DIR__ . '/calc.php';
             $c = new Calc();
             $r = $c->prepare($include, $exclude ?: []);
             if (!empty($r)) {
@@ -2579,6 +2614,10 @@ DNS-over-HTTPS with IP:
     public function setdnsttPassword($text)
     {
         $c = $this->getPacConf();
+        if ($text && !$this->validSecret($text = trim((string) $text))) {
+            $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
+            return;
+        }
         if ($text) {
             $c['dnsttPassword'] = $text;
         } else {
@@ -3262,6 +3301,8 @@ DNS-over-HTTPS with IP:
         }
         if (!empty($domains = array_filter($domains ?: [], fn($e) => preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}~', $e)))) {
             $this->addInclude(implode(',', $domains), 'white');
+        } else {
+            $this->answer($this->input['callback_id'], "$type: download failed", true);
         }
     }
 
@@ -3603,7 +3644,7 @@ DNS-over-HTTPS with IP:
         $dns = $m[1];
         preg_match('~^expose-iroutes = (true)~sm', $ocserv, $m);
         $expose = $m[1];
-        $pass   = htmlspecialchars($pac['ocserv']);
+        $pass   = htmlspecialchars((string) ($pac['ocserv'] ?? ''));
         $text[] = "Menu -> OpenConnect";
         if (!empty($cs)) {
             $oc = $this->getHashSubdomain('oc');
@@ -3717,6 +3758,11 @@ DNS-over-HTTPS with IP:
 
     public function addocus($user)
     {
+        // ocserv.passwd is "user:hash" lines
+        if (!preg_match('~^[A-Za-z0-9._@-]{1,64}$~D', $user = trim((string) $user))) {
+            $this->send($this->input['chat'], 'wrong name: A-Z a-z 0-9 . _ @ -');
+            return;
+        }
         $pac = $this->getPacConf();
         $this->ssh('echo ' . escapeshellarg($pac['ocserv']) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($user), 'oc');
         $this->menu('oc');
@@ -3733,7 +3779,11 @@ DNS-over-HTTPS with IP:
             $emails[] = $v['email'];
         }
         foreach ($users as $user) {
-            $uuid = $user[1] ?: trim($this->ssh('xray uuid', 'xr'));
+            if (!$this->validName($user[0] ?? '') || (!empty($user[1]) && !preg_match('~^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$~iD', $user[1]))) {
+                $this->send($this->input['chat'], 'wrong user: name[:uuid], name of letters, digits, space . _ @ -');
+                return $this->xray();
+            }
+            $uuid = ($user[1] ?? '') ?: trim($this->ssh('xray uuid', 'xr'));
             if (in_array($uuid, $uuids ?: []) || in_array($user[0], $emails ?: [])) {
                 $this->send($this->input['chat'], "user {$user[0]} already exists");
                 return $this->xray();
@@ -3775,6 +3825,10 @@ DNS-over-HTTPS with IP:
 
     public function renXrUs($name, $i)
     {
+        if (!$this->validName($name = trim((string) $name))) {
+            $this->send($this->input['chat'], 'wrong name: letters, digits, space . _ @ -');
+            return $this->userXr($i);
+        }
         $c = $this->getXray();
         $c['inbounds'][0]['settings']['clients'][$i]['email'] = $name;
         $this->restartXray($c);
@@ -4013,7 +4067,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/defaultTemplate $type",
             ],
         ];
-        foreach ($templates as $k => $v) {
+        foreach ($templates ?: [] as $k => $v) {
             $data[] = [
                 [
                     'text'          => $k,
@@ -4549,7 +4603,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/choiceTemplate {$type}_{$i}_" . base64_encode('origin'),
             ],
         ];
-        foreach ($templates as $k => $v) {
+        foreach ($templates ?: [] as $k => $v) {
             $data[] = [
                 [
                     'text'          => $k,
@@ -4574,14 +4628,18 @@ DNS-over-HTTPS with IP:
     public function userXr($i)
     {
         $xray   = $this->getXray();
-        $c      = $xray['inbounds'][0]['settings']['clients'][$i];
+        $c      = $xray['inbounds'][0]['settings']['clients'][$i] ?? null;
+        if (empty($c)) {
+            // the user is gone (deleted from another message): back to the list
+            return $this->xray();
+        }
         $pac    = $this->getPacConf();
         $domain = $this->getDomain($pac['transport'] != 'Reality');
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
-        $name   = rawurlencode($c['email']);
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars($c['email']) . "\n";
+        $name   = rawurlencode((string) ($c['email'] ?? ''));
+        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? '')) . "\n";
         if (file_exists(__DIR__ . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
@@ -4786,7 +4844,7 @@ DNS-over-HTTPS with IP:
                     header("Location: sing-box://import-remote-profile/?url=$si");
                     exit;
                 case 'c':
-                    header("Location: clash://install-config/?url=$cl&overwrite=no&name=$email");
+                    header("Location: clash://install-config/?url=$cl&overwrite=no&name=" . rawurlencode((string) $email));
                     exit;
             }
         }
@@ -5357,6 +5415,24 @@ DNS-over-HTTPS with IP:
     }
 
     /**
+     * A user name shown in menus and written into Xray/AdGuard configs and
+     * client links: letters, digits, space and . _ @ -, up to 64 chars.
+     */
+    public function validName($name): bool
+    {
+        return is_string($name) && (bool) preg_match('~^[\p{L}\p{N}][\p{L}\p{N} ._@-]{0,63}$~uD', $name);
+    }
+
+    /**
+     * A password given to chpasswd/ocpasswd through a pipe: printable, one
+     * line, no ':' (chpasswd field separator), 1-128 chars.
+     */
+    public function validSecret($secret): bool
+    {
+        return is_string($secret) && (bool) preg_match('~^[^\x00-\x1f\x7f:]{1,128}$~uD', $secret);
+    }
+
+    /**
      * A plain DNS host name (ASCII/punycode). Everything that ends up in
      * nginx, Xray or certbot configs as a domain must pass this.
      */
@@ -5784,7 +5860,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/import",
             ],
         ];
-        $backup = array_filter(explode('/', $conf['backup']));
+        $backup = array_filter(explode('/', (string) ($conf['backup'] ?? '')));
         if (!empty($backup)) {
             if (!empty(strtotime($backup[0])) && !empty(strtotime($backup[1]))) {
                 $backup = "{$backup[0]} start / {$backup[1]} period";
@@ -5948,7 +6024,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/cleanLog",
             ],
         ];
-        $autocleanlogs = array_filter(explode('/', $p['autocleanlogs']));
+        $autocleanlogs = array_filter(explode('/', (string) ($p['autocleanlogs'] ?? '')));
         if (!empty($autocleanlogs)) {
             if (!empty(strtotime($autocleanlogs[0])) && !empty(strtotime($autocleanlogs[1]))) {
                 $autocleanlogs = "{$autocleanlogs[0]} start / {$autocleanlogs[1]} period";
