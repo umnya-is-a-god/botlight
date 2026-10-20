@@ -40,7 +40,8 @@ CFG
 ```shell
 cd /root/vpnbot
 git remote set-url origin git@github-botlight:umnya-is-a-god/botlight.git
-git fetch origin --tags && git checkout -f -B lightweightbot origin/lightweightbot
+git fetch origin && git checkout -f -B main origin/main
+git fetch https://github.com/mercurykd/vpnbot.git --tags   # версии бота берутся из тегов автора
 make r
 ```
 
