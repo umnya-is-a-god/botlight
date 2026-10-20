@@ -123,7 +123,6 @@ services:
             - ./logs/:/logs/
             - ./scripts/start_php.sh:/start_php.sh
             - ./scripts/check_file.sh:/check_file.sh
-            - ./version:/version
             - ./mirror:/mirror
             - ./.env:/mirror/.env
             - ./update:/update
@@ -170,7 +169,6 @@ services:
             - ./ssh:/ssh
             - ./app:/app
             - ./logs/:/logs/
-            - ./version:/version
             - ./update:/update
             - ./.git:/.git
             - ./scripts/start_service.sh:/start_service.sh

@@ -44,16 +44,12 @@ delete:
 	docker system prune -f -a
 	docker volume prune -f -a
 	rm -rf /root/vpnbot
-push:
-	docker compose push
 s:
 	git status -su
 c:
 	git add config/
 	git checkout .
 	git reset
-webhook:
-	docker compose exec php php checkwebhook.php
 reset:
 	make d
 	git reset --hard
