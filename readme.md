@@ -22,25 +22,13 @@
 * Главное меню: Vless + OpenConnect, AdGuard + PAC, DNSTT + Warp.
 * Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.
 
-### Обновление сервера с исходного vpnbot
-
-Репозиторий приватный: серверу нужен deploy key с доступом на чтение (Settings → Deploy keys).
-
-```shell
-ssh-keygen -t ed25519 -f /root/.ssh/botlight -N ''
-cat /root/.ssh/botlight.pub   # добавить в Deploy keys, без write access
-cat >> /root/.ssh/config <<'CFG'
-Host github-botlight
-    HostName github.com
-    IdentityFile /root/.ssh/botlight
-CFG
-```
+### Переход с исходного vpnbot
 
 Перед `make r` уберите из `docker-compose.override.yml` секции удалённых сервисов (`wg`, `wg1`, `np`, `tg`, `ss`, `proxy`, `hy`), если они там есть.
 
 ```shell
 cd /root/vpnbot
-git remote set-url origin git@github-botlight:umnya-is-a-god/botlight.git
+git remote set-url origin https://github.com/umnya-is-a-god/botlight.git
 git fetch origin && git checkout -f -B main origin/main
 git fetch https://github.com/mercurykd/vpnbot.git --tags   # версии бота берутся из тегов автора
 make r
@@ -50,33 +38,21 @@ make r
 
 ## Установка с нуля
 
-Подходит для чистого сервера Debian/Ubuntu, всё выполняется от root.
-
-1. Создайте ключ для доступа к приватному репозиторию:
+Для чистого сервера Debian/Ubuntu, выполняется от root. Бот ставится в `/root/vpnbot`.
 
 ```shell
-ssh-keygen -t ed25519 -f /root/.ssh/botlight -N ''
-cat /root/.ssh/botlight.pub
-cat >> /root/.ssh/config <<'CFG'
-Host github-botlight
-    HostName github.com
-    IdentityFile /root/.ssh/botlight
-CFG
-ssh -o StrictHostKeyChecking=accept-new -T git@github-botlight
+wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY
 ```
 
-2. Добавьте выведенный ключ в репозиторий: Settings → Deploy keys → Add deploy key, без «Allow write access». Последняя команда должна ответить «successfully authenticated».
+#### Обновление
 
-3. Установите бота (скрипт берётся из репозитория, ссылка raw для приватного репозитория не работает):
+Бот раз в час проверяет новые коммиты в этом репозитории и присылает их список с кнопкой «update bot». Вручную:
 
 ```shell
-apt update && apt install -y git
-git clone git@github-botlight:umnya-is-a-god/botlight.git /tmp/botlight-init
-sh /tmp/botlight-init/scripts/init.sh YOUR_TELEGRAM_BOT_KEY
-rm -rf /tmp/botlight-init
+cd /root/vpnbot
+git pull
+make r
 ```
-
-Бот ставится в `/root/vpnbot`.
 
 #### Restart:
 ```shell

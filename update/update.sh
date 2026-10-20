@@ -26,8 +26,8 @@ tg_draft() {
 
 while true
 do
-    # fetch the bot repository (origin) hourly on the host, where the deploy
-    # key lives; the bot reads the fetched refs to report new commits
+    # fetch the bot repository (origin) hourly on the host; the bot reads
+    # the fetched refs to report new commits
     now=$(date +%s)
     if (( now - last_fetch >= 3600 )); then
         last_fetch=$now

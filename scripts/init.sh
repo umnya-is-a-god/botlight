@@ -1,7 +1,6 @@
 #!/bin/sh
-# Fresh install of lightweightbot from the private botlight repository.
-# Needs a deploy key for botlight and an ssh alias github-botlight
-# (see readme). Usage: sh init.sh YOUR_TELEGRAM_BOT_KEY [branch]
+# Fresh install of lightweightbot from umnya-is-a-god/botlight.
+# Usage: sh init.sh YOUR_TELEGRAM_BOT_KEY [branch]
 set -e
 
 KEY="$1"
@@ -29,7 +28,7 @@ if ! command -v docker >/dev/null 2>&1; then
     curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
 fi
 
-git clone -b "$BRANCH" git@github-botlight:umnya-is-a-god/botlight.git "$DIR"
+git clone -b "$BRANCH" https://github.com/umnya-is-a-god/botlight.git "$DIR"
 cd "$DIR"
 # the bot version (VER, container names) comes from the upstream tags
 git fetch https://github.com/mercurykd/vpnbot.git --tags

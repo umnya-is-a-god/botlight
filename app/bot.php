@@ -1139,8 +1139,8 @@ class Bot
 
     /**
      * New commits in the bot's own repository (origin, e.g. botlight).
-     * The host side update/update.sh runs "git fetch" every hour with the
-     * server's deploy key, so here only the already fetched refs are read.
+     * The host side update/update.sh runs "git fetch" every hour, so here
+     * only the already fetched refs are read.
      */
     public function newCommits($limit = 10): array
     {
