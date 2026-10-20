@@ -1139,15 +1139,6 @@ class Bot
         $r = $this->request('getUpdates', ['offset' => -1]);
     }
 
-    public function pinAdmin($pin, $unpin = false)
-    {
-        require __DIR__ . '/config.php';
-        if ($unpin) {
-            return $this->unpin($c['admin'][0], $pin);
-        } else {
-            return $this->pin($c['admin'][0], $pin);
-        }
-    }
 
     public function sendBackup($file = false)
     {
@@ -1157,12 +1148,6 @@ class Bot
         $json = $this->export();
         if (!empty($file)) {
             file_put_contents($file, $json);
-        }
-        // backups are not pinned any more; unpin the one older versions pinned
-        if (!empty($conf['pinbackup'])) {
-            $this->pinAdmin($conf['pinbackup'], 1);
-            unset($conf['pinbackup']);
-            $this->setPacConf($conf);
         }
         $this->upload("{$bot}_export_" . date('d_m_Y_H_i') . '.json', $json, $c['admin'][0]);
     }
@@ -3929,22 +3914,7 @@ DNS-over-HTTPS with IP:
 
     public function getXrayStats()
     {
-        $p = json_decode(@file_get_contents('/config/xray.stats'), true) ?: [];
-        // older versions keyed users by position: map them to names once
-        if (!empty($p['users']) && is_int(array_key_first($p['users']))) {
-            $clients = $this->getXray()['inbounds'][0]['settings']['clients'] ?? [];
-            $users   = [];
-            foreach ($p['users'] as $k => $v) {
-                if (is_int($k) && isset($clients[$k])) {
-                    $users[(string) ($clients[$k]['email'] ?? '')] = $v;
-                } elseif (is_string($k)) {
-                    $users[$k] = $v;
-                }
-            }
-            $p['users'] = $users;
-            $this->setXrayStats($p);
-        }
-        return $p;
+        return json_decode(@file_get_contents('/config/xray.stats'), true) ?: [];
     }
 
     public function setXrayStats($x)
@@ -5547,7 +5517,7 @@ DNS-over-HTTPS with IP:
             return $p['hashbot'];
         }
         // secret path part for /pac, /webapp, /adguard, /ws: 128 bits, derived
-        // from the bot token (older installs keep their stored 8-char value)
+        // from the bot token, stored on first use
         $p['hashbot'] = substr(hash_hmac('sha256', 'path', $this->key), 0, 32);
         if (empty($notset)) {
             $this->setPacConf($p);
@@ -6459,10 +6429,6 @@ DNS-over-HTTPS with IP:
                 $this->send($this->input['from'], $this->input['message'] . ' - wrong format');
             }
         }
-        if (!empty($c['pinbackup'])) {
-            $this->pinAdmin($c['pinbackup'], 1);
-            unset($c['pinbackup']);
-        }
         $this->setPacConf($c);
         $this->menu('config');
     }
@@ -6788,22 +6754,5 @@ DNS-over-HTTPS with IP:
         return $this->request('deleteMessage', $data);
     }
 
-    public function pin($chat, $message_id, $notnotify = true)
-    {
-        $data = [
-            'chat_id'    => $chat,
-            'message_id' => $message_id,
-            'disable_notification' => $notnotify,
-        ];
-        return $this->request('pinChatMessage', $data);
-    }
 
-    public function unpin($chat, $message_id)
-    {
-        $data = [
-            'chat_id'    => $chat,
-            'message_id' => $message_id,
-        ];
-        return $this->request('unpinChatMessage', $data);
-    }
 }
