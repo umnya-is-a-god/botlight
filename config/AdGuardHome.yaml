@@ -9,8 +9,9 @@ users:
 dns:
   bind_hosts:
     - 0.0.0.0
-  # encrypted upstreams: the hosting provider does not see the names users
-  # resolve (plain DNS to 1.1.1.1 / 8.8.8.8 is readable on the way)
+  # encrypted upstreams: the server's own DNS lookups are not readable on
+  # the hosting network (plain DNS to 1.1.1.1 / 8.8.8.8 is). The server's
+  # connections to the sites (IP, TLS SNI) stay visible to the host anyway.
   upstream_dns:
     - https://dns.cloudflare.com/dns-query
     - https://dns.google/dns-query
