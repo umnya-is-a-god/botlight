@@ -4941,7 +4941,6 @@ DNS-over-HTTPS with IP:
         $text[] = "\nsing-box config: <pre><code>$si</code></pre>";
         $text[] = "mihomo config: <pre><code>$cl</code></pre>";
 
-        $text[]   = "sing-box windows: <a href='$scheme://{$domain}/pac$hash?t=si&r=w&s={$c['id']}'>windows service</a>";
         $st       = $this->getXrayStats();
         $download = $this->getBytes($st['users'][$i]['global']['download'] + $st['users'][$i]['session']['download']);
         $upload   = $this->getBytes($st['users'][$i]['global']['upload'] + $st['users'][$i]['session']['upload']);
@@ -5072,7 +5071,6 @@ DNS-over-HTTPS with IP:
             's' => $uid,
         ]));
         $vless   = $this->linkXray($k);
-        $windows = "$scheme://{$domain}/pac$hash?t=si&r=w&s=$uid";
         $_GET['s'] = $uid;
         foreach ([
           'singbox' => 'si',
@@ -5142,18 +5140,6 @@ DNS-over-HTTPS with IP:
                     exit;
                 case 'rh':
                     header("Location: rabbithole://add/$cl");
-                    exit;
-                case 'w':
-                    $link = htmlspecialchars($si, ENT_XML1, 'UTF-8');
-                    $n    = "singbox_$uid.zip";
-                    copy('/singbox/singbox.zip', $n);
-                    $zip = new ZipArchive();
-                    $zip->open($n, ZipArchive::CREATE);
-                    $zip->addFromString('winsw3.xml', preg_replace('#~url~#', $link, file_get_contents('/singbox/winsw3.xml')));
-                    $zip->close();
-                    header('Content-Disposition: attachment; filename="singbox.zip"');
-                    echo file_get_contents($n);
-                    unlink($n);
                     exit;
             }
         }

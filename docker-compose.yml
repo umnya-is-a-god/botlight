@@ -128,7 +128,6 @@ services:
             - ./.env:/mirror/.env
             - ./update:/update
             - ./.git:/.git
-            - ./singbox_windows:/singbox
             - ./docker-compose.override.yml:/docker/compose
             - /var/run/docker.sock:/var/run/docker.sock:ro
             - warp:/etc/warp

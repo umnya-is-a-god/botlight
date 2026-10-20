@@ -7,6 +7,7 @@
 * Контейнеры WireGuard ×2 (`wg`, `wg1`), NaiveProxy (`np`), MTProto (`tg`), Shadowsocks (`ss` + `proxy`), Hysteria (`hy`). Вместе с ними их меню, кнопки, статусы, порты, бэкап, скрипты, dockerfile и конфиги.
 * Связка nginx с удалёнными сервисами: upstream `np:443`, `location /v2ray`. certbot больше не запрашивает сертификат на naive-поддомен.
 * Формат v2ray/xray-JSON: шаблон, кнопки, импорт в v2rayNG и Streisand. Ссылки hiddify и karing.
+* Архив sing-box для Windows (служба winsw) и ссылка на него.
 * HWID-лимит целиком.
 * AWG-ссылка для Vless, Settings → Ports для удалённых сервисов.
 * В меню маршрутов Vless — списки subnet, process, package.
