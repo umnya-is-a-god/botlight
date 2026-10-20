@@ -48,14 +48,39 @@ make r
 
 ---
 
-## Install:
+## Установка с нуля
+
+Подходит для чистого сервера Debian/Ubuntu, всё выполняется от root.
+
+1. Создайте ключ для доступа к приватному репозиторию:
 
 ```shell
-wget -O- https://raw.githubusercontent.com/umnya-is-a-god/vpnbot/master/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY master
+ssh-keygen -t ed25519 -f /root/.ssh/botlight -N ''
+cat /root/.ssh/botlight.pub
+cat >> /root/.ssh/config <<'CFG'
+Host github-botlight
+    HostName github.com
+    IdentityFile /root/.ssh/botlight
+CFG
+ssh -o StrictHostKeyChecking=accept-new -T git@github-botlight
 ```
+
+2. Добавьте выведенный ключ в репозиторий: Settings → Deploy keys → Add deploy key, без «Allow write access». Последняя команда должна ответить «successfully authenticated».
+
+3. Установите бота (скрипт берётся из репозитория, ссылка raw для приватного репозитория не работает):
+
+```shell
+apt update && apt install -y git
+git clone git@github-botlight:umnya-is-a-god/botlight.git /tmp/botlight-init
+sh /tmp/botlight-init/scripts/init.sh YOUR_TELEGRAM_BOT_KEY
+rm -rf /tmp/botlight-init
+```
+
+Бот ставится в `/root/vpnbot`.
+
 #### Restart:
 ```shell
-cd /vpnbot
+cd /root/vpnbot
 make r
 ```
 #### autoload:

@@ -1,4 +1,18 @@
-TAG="${2:-master}"
+#!/bin/sh
+# Fresh install of lightweightbot from the private botlight repository.
+# Needs a deploy key for botlight and an ssh alias github-botlight
+# (see readme). Usage: sh init.sh YOUR_TELEGRAM_BOT_KEY [branch]
+set -e
+
+KEY="$1"
+BRANCH="${2:-main}"
+DIR=/root/vpnbot
+
+if [ -z "$KEY" ]; then
+    echo "usage: sh init.sh YOUR_TELEGRAM_BOT_KEY [branch]"
+    exit 1
+fi
+
 apt update
 apt install -y \
     ca-certificates \
@@ -11,11 +25,16 @@ apt install -y \
     iproute2 \
     xtables-addons-common \
     xtables-addons-dkms
-curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
-git clone https://github.com/mercurykd/vpnbot.git
-cd ./vpnbot
-git checkout $TAG
+if ! command -v docker >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
+fi
+
+git clone -b "$BRANCH" git@github-botlight:umnya-is-a-god/botlight.git "$DIR"
+cd "$DIR"
+# the bot version (VER, container names) comes from the upstream tags
+git fetch https://github.com/mercurykd/vpnbot.git --tags
+
 echo "<?php
 
-\$c = ['key' => '$1'];" > ./app/config.php
+\$c = ['key' => '$KEY'];" > ./app/config.php
 make u
