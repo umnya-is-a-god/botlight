@@ -1,26 +1,26 @@
 ARG image
 FROM $image
-RUN apk add --no-cache --update php81 \
-    php81-mbstring \
-    php81-session \
-    php81-phar \
-    php81-zip \
-    php81-curl \
-    php81-opcache \
-    php81-openssl \
-    php81-iconv \
-    php81-intl \
-    php81-pecl-ssh2 \
-    php81-pecl-yaml \
-    unit \
-    unit-php81 \
+RUN apk add --no-cache --update php83 \
+    php83-fpm \
+    php83-mbstring \
+    php83-session \
+    php83-phar \
+    php83-zip \
+    php83-curl \
+    php83-opcache \
+    php83-openssl \
+    php83-iconv \
+    php83-intl \
+    php83-pecl-ssh2 \
+    php83-pecl-yaml \
     xxd \
     certbot \
-    libqrencode \
+    libqrencode-tools \
     openssh \
     openssl \
     curl \
     git \
+    && ln -sf /usr/bin/php83 /usr/bin/php \
     && mkdir /root/.ssh \
     && wget https://github.com/ameshkov/dnslookup/releases/download/v1.11.1/dnslookup-linux-amd64-v1.11.1.tar.gz \
     && tar -xf dnslookup-linux-amd64-v1.11.1.tar.gz \

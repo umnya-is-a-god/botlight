@@ -114,11 +114,10 @@ services:
             dockerfile: dockerfile/php.dockerfile
             args:
                 image: ${IMAGE}
-        ports:
-            - 127.0.0.1:8081:8080
         volumes:
             - ./config/.profile:/root/.ashrc:ro
-            - ./config/php.ini:/etc/php81/php.ini
+            - ./config/php.ini:/etc/php83/php.ini
+            - ./config/php-fpm.conf:/etc/php83/php-fpm.d/www.conf
             - ./config/:/config/
             - ./certs/:/certs/
             - ./ssh:/ssh
@@ -167,7 +166,7 @@ services:
                 image: ${IMAGE}
         volumes:
             - ./config/.profile:/root/.ashrc:ro
-            - ./config/php.ini:/etc/php81/php.ini
+            - ./config/php.ini:/etc/php83/php.ini
             - ./config/:/config/
             - ./certs/:/certs/
             - ./ssh:/ssh
