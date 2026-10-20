@@ -9306,6 +9306,8 @@ DNS-over-HTTPS with IP:
             CURLOPT_URL            => $this->api . $method,
             CURLOPT_CUSTOMREQUEST  => 'POST',
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 15,
             CURLOPT_HTTPHEADER => $json_header ? [
                 'Content-Type: application/json'
             ] : [],
