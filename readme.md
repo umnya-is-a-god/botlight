@@ -24,6 +24,7 @@
 * Главное меню: Vless + OpenConnect, AdGuard + PAC, DNSTT + Warp.
 * Образы собираются на сервере (`botlight/vpnbot-*:local`), а не скачиваются готовыми у автора. Версии ядер под контролем: Xray берётся последний стабильный релиз (или закреплённый в `.env`, `XRAY_VERSION`), в контейнере `php` sing-box 1.14.3 (сборка rule-set'ов) и mihomo 1.19.32. Убран неиспользуемый Qt (`py3-qt5`).
 * Исправлен разбор вывода `xray x25519`: на новом сервере публичный ключ Reality получался пустым.
+* Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.
 
 ### Версия 1.2
 
@@ -32,18 +33,6 @@
 * OpenConnect: `ocserv` 1.6.0 собирается через Meson из релизного архива с проверкой контрольной суммы (сборка из master через autotools больше не работала).
 * Warp: из образа убраны AmneziaWG, Go, tun2socks и xtables-addons, которые ему не нужны.
 * Убраны остатки списков subnet/process/package, обратный PAC и связанные теги шаблонов.
-* Исправлено: клавиатура меню PAC (не открывалась бы после удаления кнопки), предупреждение в `addRuleSet()`, `ssh()` теперь требует имя контейнера.
-
-### Переход с исходного vpnbot
-
-Перед `make r` уберите из `docker-compose.override.yml` секции удалённых сервисов (`wg`, `wg1`, `np`, `tg`, `ss`, `proxy`, `hy`), если они там есть.
-
-```shell
-cd /root/vpnbot
-git remote set-url origin https://github.com/umnya-is-a-god/botlight.git
-git fetch origin && git checkout -f -B main origin/main
-make r
-```
 
 ---
 
