@@ -369,9 +369,6 @@ class Bot
             case preg_match('~^/deletessl$~', $this->input['callback'], $m):
                 $this->deleteSSL();
                 break;
-            case preg_match('~^/dw (\w+) (si|cl)$~', $this->input['callback'], $m):
-                $this->dw($m[1], $m[2]);
-                break;
             case preg_match('~^/deloc (\d+)$~', $this->input['callback'], $m):
                 $this->deloc($m[1]);
                 break;
@@ -1307,16 +1304,6 @@ class Bot
         }
     }
 
-    public function dw($u, $t)
-    {
-        $pac                    = $this->getPacConf();
-        $c                      = $this->getXray()['inbounds'][0]['settings']['clients'][$u];
-        $_GET['s']              = $c['id'];
-        $_GET['t']              = $t;
-        $_SERVER['SERVER_NAME'] = $this->getDomain($pac['transport'] != 'Reality');
-        $conf                   = $this->subscription(1);
-        $this->sendFile($this->input['from'], new CURLStringFile($conf, $c['email'] . ($t == 'cl' ? '_mihomo.yaml' :'_singbox.json')));
-    }
 
     public function qrXray($i, $s = false)
     {
@@ -4135,10 +4122,15 @@ DNS-over-HTTPS with IP:
                 'callback_data' => '/mainOutbound',
             ],
         ];
-        $data[] = [
+        $ip_count = $p['ip_count'] ?: 1;
+        $data[]   = [
             [
                 'text'          => $p['linkdomain'] ?? $this->i18n('cdn'),
                 'callback_data' => '/addLinkDomain',
+            ],
+            [
+                'text'          => $this->i18n('ip limit') . ' ' . (!empty($p['ip_limit']) ? ": {$p['ip_limit']} sec & $ip_count" : $this->i18n('off')),
+                'callback_data' => "/setIpLimit",
             ],
         ];
         $data[] = [
@@ -4156,13 +4148,6 @@ DNS-over-HTTPS with IP:
             ],
         ];
 
-        $ip_count      = $p['ip_count'] ?: 1;
-        $data[] = [
-            [
-                'text'          => $this->i18n('ip limit') . ' ' . (!empty($p['ip_limit']) ? ": {$p['ip_limit']} sec & $ip_count" : $this->i18n('off')),
-                'callback_data' => "/setIpLimit",
-            ],
-        ];
         if ($p['transport'] == 'Reality') {
             $data[] = [
                 [
@@ -4608,16 +4593,6 @@ DNS-over-HTTPS with IP:
             [
                 'text'    => $this->i18n('mihomo'),
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=cl&s={$c['id']}"]
-            ],
-        ];
-        $data[] = [
-            [
-                'text'    => $this->i18n('singbox ⬇️'),
-                'callback_data' => "/dw {$i} si",
-            ],
-            [
-                'text'    => $this->i18n('mihomo ⬇️'),
-                'callback_data' => "/dw {$i} cl",
             ],
         ];
         $data[] = [
@@ -5795,10 +5770,8 @@ DNS-over-HTTPS with IP:
                 'text'          => $this->i18n('backup') . ': ' . ($backup ?: $this->i18n('off')),
                 'callback_data' => "/backup",
             ],
-        ];
-        $data[] = [
             [
-                'text'          => $this->i18n('autoupdate') . ': ' .  $this->i18n($conf['autoupdate'] ? 'on' : 'off'),
+                'text'          => $this->i18n('auto update') . ': ' .  $this->i18n($conf['autoupdate'] ? 'on' : 'off'),
                 'callback_data' => "/autoupdate",
             ],
         ];
