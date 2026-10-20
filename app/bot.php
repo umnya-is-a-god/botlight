@@ -61,7 +61,6 @@ class Bot
             preg_quote($this->getHashBot(1))
         ]) . '~';
         $this->ports = [
-            'hy'    => '443/udp',
             'ad'    => '853',
             'dnstt' => '53/udp',
         ];
@@ -164,7 +163,7 @@ class Bot
             case preg_match('~^/menu (?P<type>addpeer) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>wg) (?P<arg>(?:-)?\d+)$~', $this->input['callback'], $m):
             case preg_match('~^/menu (?P<type>client) (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-            case preg_match('~^/menu (?P<type>pac|adguard|config|lang|oc|mirror|update|hy)$~', $this->input['callback'], $m):
+            case preg_match('~^/menu (?P<type>pac|adguard|config|lang|oc|mirror|update)$~', $this->input['callback'], $m):
                 $this->menu(type: $m['type'] ?? false, arg: $m['arg'] ?? false);
                 break;
             case preg_match('~^/changeWG (\d+)$~', $this->input['callback'], $m):
@@ -406,9 +405,6 @@ class Bot
                 break;
             case preg_match('~^/changeOcPass$~', $this->input['callback'], $m):
                 $this->changeOcPass();
-                break;
-            case preg_match('~^/changeHysteriaPass$~', $this->input['callback'], $m):
-                $this->changeHysteriaPass();
                 break;
             case preg_match('~^/changeOcDns$~', $this->input['callback'], $m):
                 $this->changeOcDns();
@@ -1874,7 +1870,6 @@ class Bot
                 'public'  => file_get_contents('/config/dnstt/server.pub'),
             ] : false,
             'xray'          => $this->getXray(),
-            'hy'            => yaml_parse_file('/config/hysteria.yaml'),
             'oc'            => file_get_contents('/config/ocserv.conf'),
             'ocu'           => file_get_contents('/config/ocserv.passwd'),
             'xraystats'     => $this->getXrayStats(),
@@ -1958,13 +1953,6 @@ class Bot
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 file_put_contents('/config/ocserv.passwd', $json['ocu']);
                 $this->restartOcserv($json['oc']);
-            }
-            // hysteria
-            if (!empty($json['hy'])) {
-                $out[] = 'update hysteria';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                yaml_emit_file('/config/hysteria.yaml', $json['hy']);
-                $this->restartHysteria();
             }
             if (!empty($json['pac']['domain'])) {
                 $this->setUpstreamDomainOcserv($json['pac']['domain']);
@@ -5010,7 +4998,6 @@ DNS-over-HTTPS with IP:
                 [
                     $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
                     $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
-                    $this->i18n($this->ssh('pgrep hysteria', 'hy') ? 'on' : 'off') . ' ' . $this->i18n('hysteria'),
                     $this->i18n(exec("JSON=1 timeout 2 dnslookup google.com ad") ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
                     $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt'),
                     $this->i18n($this->warpStatus()) . ' ' . $this->i18n('warp'),
@@ -5018,7 +5005,6 @@ DNS-over-HTTPS with IP:
                 [
                     $this->i18n('on') . ' 443',
                     $this->i18n('on') . ' 443',
-                    $this->i18n($ports['hy']['enable'] ? 'on' : 'off') . ($ports['hy']['enable'] ? ' ' . $ports['hy']['port'] : 'port unavailable'),
                     $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port unavailable'),
                     $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port unavailable'),
                     '',
@@ -5060,12 +5046,6 @@ DNS-over-HTTPS with IP:
                                 'text'          => $this->i18n('ad_title'),
                                 'callback_data' => "/menu adguard",
                             ],
-                            [
-                                'text'          => $this->i18n('Hysteria'),
-                                'callback_data' => "/menu hy",
-                            ],
-                        ],
-                        [
                             [
                                 'text'          => $this->i18n('pac'),
                                 'callback_data' => "/pacMenu 0",
@@ -5114,7 +5094,6 @@ DNS-over-HTTPS with IP:
             'config'       => $type == 'config'  ? $this->configMenu()                     : false,
             'lang'         => $type == 'lang'    ? $this->menuLang()                       : false,
             'oc'           => $type == 'oc'      ? $this->ocMenu()                         : false,
-            'hy'           => $type == 'hy'      ? $this->hysteriaMenu()                   : false,
             'mirror'       => $type == 'mirror'  ? $this->mirrorMenu()                     : false,
             'update'       => $type == 'update'  ? $this->updatebot()                      : false,
         ];
@@ -8466,10 +8445,6 @@ DNS-over-HTTPS with IP:
             [[
                 'text'          => $this->i18n($c['dnstt'] ? 'on' : 'off') . ' 53 dnstt',
                 'callback_data' => "/hidePort dnstt",
-            ]],
-            [[
-                'text'          => $this->i18n($c['hy'] ? 'on' : 'off') . ' ' . explode(':', $c['hy']['ports'][0])[0] . ' hysteria',
-                'callback_data' => "/changePort hy",
             ]],
         ];
         if (!empty($pac['restart'])) {

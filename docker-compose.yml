@@ -203,7 +203,6 @@ services:
             - xr
             - oc
             - dnstt
-            - hy
     ad:
         image: mercurykd/vpnbot-ad:1.4
         build:
@@ -367,34 +366,4 @@ services:
         networks:
             default:
                 ipv4_address: 10.10.0.16
-        logging: *default-logging
-    hy:
-        image: mercurykd/vpnbot-hysteria:1.0
-        build:
-            dockerfile: dockerfile/hysteria.dockerfile
-            args:
-                image: ${IMAGE}
-        volumes:
-            - ./config/.profile:/root/.ashrc:ro
-            - ./ssh:/ssh
-            - ./config/sshd_config:/etc/ssh/sshd_config
-            - ./certs:/certs
-            - ./logs:/logs
-            - ./config:/config
-            - ./scripts/start_hysteria.sh:/start_hysteria.sh
-        hostname: hysteria
-        container_name: hysteria-${VER}
-        depends_on:
-            php:
-                condition: service_healthy
-        env_file:
-            - path: ./.env
-              required: true # default
-            - path: ./override.env
-              required: false
-        stop_grace_period: 1s
-        command: ["/bin/sh", "/start_hysteria.sh"]
-        networks:
-            default:
-                ipv4_address: 10.10.0.17
         logging: *default-logging

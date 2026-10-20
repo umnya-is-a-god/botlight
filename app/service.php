@@ -23,7 +23,6 @@ $bot->cloakNginx();
 $bot->syncDeny();
 $bot->cleanDocker();
 $bot->dnsttStart();
-$bot->restartHysteria();
 $c = $bot->getPacConf();
 $bot->setUpstreamDomain($c['transport'] != 'Reality' ? 't' : $c['reality']['domain']);
 $bot->setUpstreamDomainOcserv($c['domain']);
