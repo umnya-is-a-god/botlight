@@ -295,14 +295,14 @@ class Bot
             case preg_match('~^/backup$~', $this->input['callback'], $m):
                 $this->backup();
                 break;
-            case preg_match('~^/subnet (?P<arg>-?\d+(?:_-?\d+)?(?:_\d)?)$~', $this->input['callback'], $m):
-                $this->subnet(...explode('_', $m['arg']));
+            case preg_match('~^/subnet (-?\d+)$~', $this->input['callback'], $m):
+                $this->subnet((int) $m[1]);
                 break;
-            case preg_match('~^/subnetAdd (?P<arg>-?\d+(?:_-?\d+)?(?:_-?\d+)?)$~', $this->input['callback'], $m):
-                $this->subnetAdd(...explode('_', $m['arg']));
+            case preg_match('~^/subnetAdd (-?\d+)$~', $this->input['callback'], $m):
+                $this->subnetAdd((int) $m[1]);
                 break;
-            case preg_match('~^/subnetDelete (?P<arg>-?\d+(?:_-?\d+)?(?:_-?\d+)?(?:_-?\d+)?)$~', $this->input['callback'], $m):
-                $this->subnetDelete(...explode('_', $m['arg']));
+            case preg_match('~^/subnetDelete (\d+)_(-?\d+)$~', $this->input['callback'], $m):
+                $this->subnetDelete((int) $m[1], (int) $m[2]);
                 break;
             case preg_match('~^/calc$~', $this->input['callback'], $m):
                 $this->calc();
@@ -2254,7 +2254,8 @@ DNS-over-HTTPS with IP:
         $this->restartXray($xr);
     }
 
-    public function subnetAdd($wgpage, $page, $openconnect)
+    // OpenConnect routes: subnets pushed to clients instead of "default"
+    public function subnetAdd($page)
     {
         $r = $this->send(
             $this->input['chat'],
@@ -2266,53 +2267,58 @@ DNS-over-HTTPS with IP:
             'start_message'  => $this->input['message_id'],
             'start_callback' => $this->input['callback_id'],
             'callback'       => 'subnetSave',
-            'args'           => [$wgpage, $page, $openconnect],
+            'args'           => [$page],
         ];
     }
 
-    public function subnetSave($text, $wgpage, $page, $openconnect)
+    // an IPv4 network like 10.0.0.0/24: the only thing written as an ocserv route
+    public function validSubnet($v): bool
     {
-        $c = $this->getPacConf();
-        $subnets = explode(',', $text);
-        if ($subnets) {
-            $c['subnets'] = array_merge($c['subnets'] ?: [], array_filter(array_map(fn ($e) => trim($e), $subnets)));
-            $this->setPacConf($c);
-            $page = floor(count($c['subnets']) / $this->limit);
-        }
-        if (!empty($openconnect)) {
-            $this->ocservRoute();
-        }
-        $this->subnet($wgpage, $page, $openconnect);
+        return is_string($v)
+            && (bool) preg_match('~^(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})$~D', $v, $m)
+            && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
+            && (int) $m[2] <= 32;
     }
 
-    public function subnetDelete($wgpage, $k, $page = 0, $openconnect = 0)
+    public function subnetSave($text, $page)
+    {
+        $c     = $this->getPacConf();
+        $items = array_filter(array_map('trim', explode(',', (string) $text)), 'strlen');
+        $good  = array_values(array_filter($items, [$this, 'validSubnet']));
+        if (count($good) < count($items)) {
+            $this->send($this->input['chat'], 'wrong subnet, expected like 10.0.0.0/24: ' . htmlspecialchars(implode(', ', array_diff($items, $good))));
+        }
+        if ($good) {
+            $c['subnets'] = array_values(array_unique(array_merge(array_values($c['subnets'] ?? []), $good)));
+            $this->setPacConf($c);
+            $page = -2; // the last page, where the new ones are
+            $this->ocservRoute();
+        }
+        $this->subnet($page);
+    }
+
+    public function subnetDelete($k, $page = 0)
     {
         $c = $this->getPacConf();
         unset($c['subnets'][$k]);
+        $c['subnets'] = array_values($c['subnets'] ?? []);
         $this->setPacConf($c);
-        if (!empty($openconnect)) {
-            $this->ocservRoute();
-        }
-        $this->subnet($wgpage, $page, $openconnect);
+        $this->ocservRoute();
+        $this->subnet($page);
     }
 
+    /**
+     * Rewrites the "route = ..." lines of ocserv.conf from the subnet list:
+     * one line per subnet, "route = default" when the list is empty.
+     */
     public function ocservRoute()
     {
-        $p = $this->getPacConf();
-        $c = file_get_contents('/config/ocserv.conf');
-        $t = preg_replace('~^route[^\n]+~sm', '', $c);
-        if (!empty($p['subnets'])) {
-            foreach ($p['subnets'] as $v) {
-                if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}~', $v)) {
-                    $t .= "route = $v";
-                    $flag = true;
-                }
-            }
-            if (empty($flag)) {
-                $t .= 'route = default';
-            }
-        } else {
-            $t .= 'route = default';
+        $p      = $this->getPacConf();
+        $c      = file_get_contents('/config/ocserv.conf');
+        $t      = rtrim(preg_replace('~^route\s*=[^\n]*\n?~m', '', $c), "\n") . "\n";
+        $routes = array_values(array_filter($p['subnets'] ?? [], [$this, 'validSubnet']));
+        foreach ($routes ?: ['default'] as $v) {
+            $t .= "route = $v\n";
         }
         $this->restartOcserv($t);
     }
@@ -2371,7 +2377,7 @@ DNS-over-HTTPS with IP:
         }
     }
 
-    public function subnet($wgpage = 0, $page = 0, $openconnect = 0)
+    public function subnet($page = 0)
     {
         $count  = $this->limit;
         $text   = 'Menu -> Openconnect -> ' . $this->i18n('listSubnet') . "\n";
@@ -2384,36 +2390,34 @@ DNS-over-HTTPS with IP:
         $data[] = [
             [
                 'text'          => $this->i18n('add'),
-                'callback_data' => "/subnetAdd {$wgpage}_{$page}_$openconnect",
+                'callback_data' => "/subnetAdd $page",
             ],
         ];
-        $subnets = $this->getPacConf()['subnets'];
+        $subnets = $this->getPacConf()['subnets'] ?? [];
         if (!empty($subnets)) {
             $all     = (int) ceil(count($subnets) / $count);
-            $page    = min($page, $all - 1);
-            $page    = $page == -2 ? $all - 1 : $page;
-            $subnets = $page != -1 ? array_slice($subnets, $page * $count, $count, true) : $subnets;
-            foreach ($subnets as $k => $v) {
+            $page    = $page < 0 ? $all - 1 : min((int) $page, $all - 1);
+            foreach (array_slice($subnets, $page * $count, $count, true) as $k => $v) {
                 $data[] = [
                     [
                         'text'          => $this->i18n('delete') . " $v",
-                        'callback_data' => "/subnetDelete {$wgpage}_{$k}_{$page}_$openconnect",
+                        'callback_data' => "/subnetDelete {$k}_{$page}",
                     ],
                 ];
             }
-            if ($page != -1 && $all > 1) {
+            if ($all > 1) {
                 $data[] = [
                     [
                         'text'          => '<<',
-                        'callback_data' => "/subnet {$wgpage}_" . ($page - 1 >= 0 ? $page - 1 : $all - 1) . ($openconnect ? '_1' : ''),
+                        'callback_data' => "/subnet " . ($page - 1 >= 0 ? $page - 1 : $all - 1),
                     ],
                     [
                         'text'          => $page + 1,
-                        'callback_data' => "/subnet {$wgpage}_$page" . ($openconnect ? '_1' : ''),
+                        'callback_data' => "/subnet $page",
                     ],
                     [
                         'text'          => '>>',
-                        'callback_data' => "/subnet {$wgpage}_" . ($page < $all - 1 ? $page + 1 : 0) . ($openconnect ? '_1' : ''),
+                        'callback_data' => "/subnet " . ($page < $all - 1 ? $page + 1 : 0),
                     ],
                 ];
             }
@@ -2421,7 +2425,7 @@ DNS-over-HTTPS with IP:
         $data[] = [
             [
                 'text'          => $this->i18n('back'),
-                'callback_data' => $openconnect ? '/menu oc' : "/menu wg $wgpage",
+                'callback_data' => '/menu oc',
             ],
         ];
         $this->update(
@@ -3852,7 +3856,7 @@ DNS-over-HTTPS with IP:
         $data[] = [
             [
                 'text'          =>  $this->i18n('listSubnet'),
-                'callback_data' => "/subnet 0_0_1",
+                'callback_data' => "/subnet 0",
             ],
         ];
         $data[] = [
