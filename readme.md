@@ -21,9 +21,13 @@
 * Кнопки выгрузки готовых конфигов файлом (`singbox ⬇️`, `mihomo ⬇️`) в карточке пользователя: конфиги берутся по ссылкам подписки.
 * PAC-файлы для браузера и Shadowsocks-Android (ссылки, кнопки, их сборка `updatepac.php` и выдача по `/pac…?t=pac|mpac`), кнопки импорта готовых списков «community antifilter» и «ru-bundle», скрытая проверка адреса по списку. Список доменов PAC остался: он попадает в подписки (`~pac~` в шаблонах), правки применяются сразу.
 
+### Добавлено
+
+* Happ: в карточке пользователя ссылка `import://happ` и адрес подписки (`/pac…?t=hp`, ссылка `vless://` в base64). Профиль маршрутизации Happ (`happ://routing/onadd/…` или `…/add/…`) задаётся в меню Vless кнопкой «Happ routing» и отдаётся в заголовке `routing` подписки.
+
 ### Изменено
 
-* XHTTP: `xmux` у sing-box и mihomo выровнены (без `max_connections`), значения совпадают с `vless://`-ссылкой.
+* XHTTP: `xmux` у mihomo совпадает с `vless://`-ссылкой. sing-box транспорт XHTTP не поддерживает, поэтому при XHTTP ссылки и кнопки sing-box в карточке пользователя скрыты, а подписка sing-box отвечает ошибкой.
 * Telegram API: таймауты cURL 5/15 с, бот больше не зависает намертво.
 * sing-box 1.14: `http_client` и `http_clients` вместо `download_detour`.
 * Шаблоны `origin` заменены новыми: sing-box 1.14 и mihomo для Android/Windows, `authentication` = `123:321`.

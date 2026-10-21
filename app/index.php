@@ -94,6 +94,10 @@ switch (true) {
                 $bot->subscription();
                 exit;
 
+            case 'hp':
+                $bot->happSubscription();
+                exit;
+
             case 'te':
                 $ty = $_GET['ty'] ?? '';
                 $te = is_string($_GET['te'] ?? null) ? $_GET['te'] : '';

@@ -157,6 +157,9 @@ class Bot
             case preg_match('~^/mirror$~', $this->input['message'], $m):
                 $this->menu('mirror');
                 break;
+            case preg_match('~^/happRouting$~', $this->input['callback'], $m):
+                $this->happRouting();
+                break;
             case preg_match('~^/mainOutbound$~', $this->input['callback'], $m):
                 $this->mainOutbound();
                 break;
@@ -4477,6 +4480,12 @@ DNS-over-HTTPS with IP:
         }
         $data[] = [
             [
+                'text'          => $this->i18n('happ routing') . ': ' . $this->i18n(!empty($p['happrouting']) ? 'on' : 'off'),
+                'callback_data' => '/happRouting',
+            ],
+        ];
+        $data[] = [
+            [
                 'text'          => $this->i18n('sing-box templates'),
                 'callback_data' => "/templates sing",
             ],
@@ -4910,8 +4919,13 @@ DNS-over-HTTPS with IP:
         if (file_exists(__DIR__ . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#$name'>import://sing-box</a>";
+        // sing-box has no XHTTP transport: no sing-box links while XHTTP is on
+        $sing = ($pac['transport'] ?? '') != 'xhttp';
+        if ($sing) {
+            $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#$name'>import://sing-box</a>";
+        }
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#$name'>import://mihomo</a>";
+        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=hp&r=hp&s={$c['id']}#$name'>import://happ</a>";
 
         $si = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
@@ -4925,8 +4939,11 @@ DNS-over-HTTPS with IP:
         ]));
 
         $text[] = "\nVless:\n<pre><code>{$this->linkXray($i)}</code></pre>";
-        $text[] = "\nSing-box:\n<pre><code>$si</code></pre>";
+        if ($sing) {
+            $text[] = "\nSing-box:\n<pre><code>$si</code></pre>";
+        }
         $text[] = "\nMihomo:\n<pre><code>$cl</code></pre>";
+        $text[] = "\nHapp:\n<pre><code>$scheme://{$domain}/pac$hash?t=hp&s={$c['id']}</code></pre>";
 
         $st       = $this->getXrayStats();
         [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $c));
@@ -4936,16 +4953,16 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/resetXrUser $i",
             ],
         ];
-        $data[] = [
-            [
+        $data[] = array_values(array_filter([
+            $sing ? [
                 'text'    => $this->i18n('singbox'),
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=si&s={$c['id']}"]
-            ],
+            ] : null,
             [
                 'text'    => $this->i18n('mihomo'),
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=cl&s={$c['id']}"]
             ],
-        ];
+        ]));
         $data[] = [
             [
                 'text'          => $this->i18n($c['off'] ? 'off' : 'on'),
@@ -4954,22 +4971,24 @@ DNS-over-HTTPS with IP:
         ];
         $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : 'default(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : 'origin') . ')';
         $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : 'default(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : 'origin') . ')';
-        $data[]        = [
-            [
+        $data[]        = array_values(array_filter([
+            $sing ? [
                 'text'          => $this->i18n('singbox') . ": $singtemplate",
                 'callback_data' => "/templateUser sing $i",
-            ],
+            ] : null,
             [
                 'text'          => $this->i18n('mihomo') . ": $clashtemplate",
                 'callback_data' => "/templateUser clash $i",
             ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('qr singbox'),
-                'callback_data' => "/qrXray {$i}_2",
-            ],
-        ];
+        ]));
+        if ($sing) {
+            $data[] = [
+                [
+                    'text'          => $this->i18n('qr singbox'),
+                    'callback_data' => "/qrXray {$i}_2",
+                ],
+            ];
+        }
         $data[] = [
             [
                 'text'          => $this->i18n('rename'),
@@ -5068,6 +5087,12 @@ DNS-over-HTTPS with IP:
                 exit;
         }
         $pac    = $this->getPacConf();
+        if ($type == 'sing' && ($pac['transport'] ?? '') == 'xhttp') {
+            // sing-box has no XHTTP transport: an error, not a config it rejects
+            header('Content-Type: text/plain', true, 404);
+            echo 'sing-box does not support the XHTTP transport';
+            exit;
+        }
         $domain = $this->requestDomain($pac);
         $xr     = $this->getXray();
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
@@ -5316,6 +5341,83 @@ DNS-over-HTTPS with IP:
 
         header('Content-type: application/json');
         echo json_encode($c);
+    }
+
+    /**
+     * Subscription for Happ: the user's vless link (base64 list, as Xray
+     * clients expect) and, when set in the Xray menu, a routing profile in
+     * the "routing" header (https://www.happ.su/main/dev-docs/routing).
+     * ?r=hp redirects to happ://add/<this subscription>.
+     */
+    public function happSubscription()
+    {
+        $pac = $this->getPacConf();
+        $xr  = $this->getXray();
+        $sid = is_string($_GET['s'] ?? null) ? $_GET['s'] : '';
+        $i   = null;
+        foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
+            if ($sid !== '' && hash_equals((string) $v['id'], $sid)) {
+                $i = empty($v['off']) ? $k : null;
+                break;
+            }
+        }
+        if ($i === null) {
+            header('500', true, 500);
+            exit;
+        }
+        if (($_GET['r'] ?? '') === 'hp') {
+            $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
+            $domain = $this->requestDomain($pac);
+            header("Location: happ://add/$scheme://$domain/pac{$this->getHashBot()}?t=hp&s=$sid");
+            exit;
+        }
+        if (!empty($pac['happrouting']) && $this->validHappRouting($pac['happrouting'])) {
+            header('routing: ' . $pac['happrouting']);
+        }
+        header('Content-Type: text/plain');
+        echo base64_encode($this->linkXray($i) . "\n");
+    }
+
+    // happ://routing/add|onadd/<base64 of a JSON object>
+    public function validHappRouting($link): bool
+    {
+        if (!is_string($link) || !preg_match('~^happ://routing/(?:on)?add/([A-Za-z0-9+/_-]+={0,2})$~D', $link, $m)) {
+            return false;
+        }
+        $json = json_decode((string) base64_decode(strtr($m[1], '-_', '+/'), true), true);
+        return is_array($json) && !array_is_list($json);
+    }
+
+    public function happRouting()
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...), \"-\" removes it",
+            $this->input['message_id'],
+            reply: 'happ://routing/onadd/...',
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => 'setHappRouting',
+            'args'           => [],
+        ];
+    }
+
+    public function setHappRouting($text)
+    {
+        $text = trim((string) $text);
+        $pac  = $this->getPacConf();
+        if ($text === '-' || $text === '') {
+            unset($pac['happrouting']);
+        } elseif ($this->validHappRouting($text)) {
+            $pac['happrouting'] = $text;
+        } else {
+            $this->send($this->input['chat'], 'wrong link: happ://routing/onadd/ or happ://routing/add/ followed by base64 JSON');
+            return $this->xray();
+        }
+        $this->setPacConf($pac);
+        $this->xray();
     }
 
     public function addClashRuleSet($c)

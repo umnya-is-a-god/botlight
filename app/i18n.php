@@ -1,6 +1,10 @@
 <?php
 
 $i = [
+    'happ routing'         => [
+        'en' => 'Happ routing',
+        'ru' => 'Маршруты Happ',
+    ],
     'warp'             => [
         'en' => 'Warp',
         'ru' => 'Warp',
