@@ -4480,7 +4480,7 @@ DNS-over-HTTPS with IP:
         }
         $data[] = [
             [
-                'text'          => $this->i18n('happ routing') . ': ' . $this->i18n(!empty($p['happrouting']) ? 'on' : 'off'),
+                'text'          => $this->i18n('happ routing') . ': ' . (!empty($p['happrouting']) ? 'originRU' : $this->i18n('off')),
                 'callback_data' => '/happRouting',
             ],
         ];
@@ -5371,8 +5371,8 @@ DNS-over-HTTPS with IP:
             header("Location: happ://add/$scheme://$domain/pac{$this->getHashBot()}?t=hp&s=$sid");
             exit;
         }
-        if (!empty($pac['happrouting']) && $this->validHappRouting($pac['happrouting'])) {
-            header('routing: ' . $pac['happrouting']);
+        if ($routing = $this->happRoutingLink($pac['happrouting'] ?? '')) {
+            header("routing: $routing");
         }
         header('Content-Type: text/plain');
         echo base64_encode($this->linkXray($i) . "\n");
@@ -5388,11 +5388,27 @@ DNS-over-HTTPS with IP:
         return is_array($json) && !array_is_list($json);
     }
 
+    /**
+     * The routing link as Happ gets it: the profile is always named
+     * "originRU", so a new link replaces the same profile in Happ (Happ
+     * overwrites a profile with the same name) instead of adding another.
+     */
+    public function happRoutingLink($link): string
+    {
+        if (!$this->validHappRouting($link)) {
+            return '';
+        }
+        preg_match('~^happ://routing/((?:on)?add)/(.+)$~D', $link, $m);
+        $json = json_decode(base64_decode(strtr($m[2], '-_', '+/')), true);
+        $json['Name'] = 'originRU';
+        return "happ://routing/{$m[1]}/" . base64_encode(json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
     public function happRouting()
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...), \"-\" removes it",
+            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...): replaces the current one, the profile is named originRU; \"-\" removes it",
             $this->input['message_id'],
             reply: 'happ://routing/onadd/...',
         );
