@@ -4478,22 +4478,17 @@ DNS-over-HTTPS with IP:
                 ],
             ];
         }
-        $data[] = [
-            [
-                'text'          => $this->i18n('happ routing') . ': ' . (!empty($p['happrouting']) ? 'originRU' : $this->i18n('off')),
-                'callback_data' => '/happRouting',
-            ],
-        ];
-        $data[] = [
-            [
+        // sing-box has no XHTTP transport: its templates are hidden while XHTTP is on
+        $data[] = array_values(array_filter([
+            ($p['transport'] ?? '') != 'xhttp' ? [
                 'text'          => $this->i18n('sing-box templates'),
                 'callback_data' => "/templates sing",
-            ],
+            ] : null,
             [
                 'text'          => $this->i18n('mihomo templates'),
                 'callback_data' => "/templates clash",
             ],
-        ];
+        ]));
         $data[] = [
             [
                 'text'          => $this->i18n('routes'),
@@ -4585,6 +4580,10 @@ DNS-over-HTTPS with IP:
             [[
                 'text'          => $this->i18n('rulesset'),
                 'callback_data' => "/xtlsrulesset",
+            ]],
+            [[
+                'text'          => $this->i18n('happ routing') . ': ' . (!empty($this->getPacConf()['happrouting']) ? 'originRU' : $this->i18n('off')),
+                'callback_data' => '/happRouting',
             ]],
         ];
         $data[] = [
@@ -5430,10 +5429,10 @@ DNS-over-HTTPS with IP:
             $pac['happrouting'] = $text;
         } else {
             $this->send($this->input['chat'], 'wrong link: happ://routing/onadd/ or happ://routing/add/ followed by base64 JSON');
-            return $this->xray();
+            return $this->routes();
         }
         $this->setPacConf($pac);
-        $this->xray();
+        $this->routes();
     }
 
     public function addClashRuleSet($c)

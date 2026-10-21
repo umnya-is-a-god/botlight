@@ -23,11 +23,11 @@
 
 ### Добавлено
 
-* Happ: в карточке пользователя ссылка `import://happ` и адрес подписки (`/pac…?t=hp`, ссылка `vless://` в base64). Профиль маршрутизации Happ (`happ://routing/onadd/…` или `…/add/…`) задаётся в меню Vless кнопкой «Маршруты Happ» (новая ссылка заменяет прежнюю) и отдаётся в заголовке `routing` подписки; в Happ профиль всегда называется `originRU`.
+* Happ: в карточке пользователя ссылка `import://happ` и адрес подписки (`/pac…?t=hp`, ссылка `vless://` в base64). Профиль маршрутизации Happ (`happ://routing/onadd/…` или `…/add/…`) задаётся в меню Vless → routes кнопкой «Маршруты Happ» (новая ссылка заменяет прежнюю) и отдаётся в заголовке `routing` подписки; в Happ профиль всегда называется `originRU`.
 
 ### Изменено
 
-* XHTTP: `xmux` у mihomo совпадает с `vless://`-ссылкой. sing-box транспорт XHTTP не поддерживает, поэтому при XHTTP ссылки и кнопки sing-box в карточке пользователя скрыты, а подписка sing-box отвечает ошибкой.
+* XHTTP: `xmux` у mihomo совпадает с `vless://`-ссылкой. sing-box транспорт XHTTP не поддерживает, поэтому при XHTTP ссылки и кнопки sing-box в карточке пользователя и шаблоны sing-box в меню Vless скрыты, а подписка sing-box отвечает ошибкой.
 * Telegram API: таймауты cURL 5/15 с, бот больше не зависает намертво.
 * sing-box 1.14: `http_client` и `http_clients` вместо `download_detour`.
 * Шаблоны `origin` заменены новыми: sing-box 1.14 и mihomo для Android/Windows, `authentication` = `123:321`.
