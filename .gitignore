@@ -31,3 +31,5 @@ subscription.php
 location.conf
 override.conf
 i18n.override.php
+/config/xray.stats
+/config/xray.stats.lock

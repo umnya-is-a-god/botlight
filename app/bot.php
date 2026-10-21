@@ -773,6 +773,11 @@ class Bot
 
     public function chocdns($dns)
     {
+        // one line of ocserv.conf: a single IP address
+        if (!filter_var($dns = trim((string) $dns), FILTER_VALIDATE_IP)) {
+            $this->send($this->input['chat'], 'wrong dns: one IP address, like 10.10.0.5');
+            return $this->menu('oc');
+        }
         $c = file_get_contents('/config/ocserv.conf');
         $t = preg_replace('~^dns[^\n]+~sm', "dns = $dns", $c);
         $this->restartOcserv($t);
@@ -782,7 +787,13 @@ class Bot
     public function chOcSubdomain($domain)
     {
         $pac = $this->getPacConf();
-        if ($domain == -1) {
+        // a DNS label: it goes into the nginx SNI map, ocserv.conf and the certificate
+        $domain = strtolower(trim((string) $domain));
+        if ($domain !== '-1' && !preg_match('~^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$~D', $domain)) {
+            $this->send($this->input['chat'], 'wrong subdomain: a-z, 0-9, -');
+            return $this->menu('oc');
+        }
+        if ($domain === '-1') {
             unset($pac["oc_domain"]);
         } else {
             $pac["oc_domain"] = $domain;
@@ -795,6 +806,11 @@ class Bot
 
     public function chockey($pass)
     {
+        // a quoted value in ocserv.conf and a query string in the client link
+        if (!preg_match('#^[A-Za-z0-9._~-]{1,64}$#D', $pass = trim((string) $pass))) {
+            $this->send($this->input['chat'], 'wrong secret: 1-64 characters A-Z a-z 0-9 . _ ~ -');
+            return $this->menu('oc');
+        }
         $c = file_get_contents('/config/ocserv.conf');
         $t = preg_replace('~^camouflage_secret[^\n]+~sm', "camouflage_secret = \"$pass\"", $c);
         $this->restartOcserv($t);
@@ -1814,11 +1830,16 @@ class Bot
 
     public function setLinkDomain($text)
     {
-        $c = $this->getPacConf();
-        if (empty($text)) {
+        $c    = $this->getPacConf();
+        $text = trim((string) $text);
+        if ($text !== '' && !$this->validHost($text = (string) idn_to_ascii($text))) {
+            $this->send($this->input['chat'], 'wrong domain');
+            return $this->xray();
+        }
+        if ($text === '') {
             unset($c['linkdomain']);
         } else {
-            $c['linkdomain'] = trim($text);
+            $c['linkdomain'] = $text;
         }
         $this->setPacConf($c);
         $this->xray();
@@ -1881,6 +1902,10 @@ class Bot
 
     public function chpsswd($pass)
     {
+        if (!preg_match('~^[^\x00-\x1f\x7f]{8,128}$~uD', $pass = trim((string) $pass))) {
+            $this->send($this->input['chat'], 'wrong password: 8-128 printable characters');
+            return $this->menu('adguard');
+        }
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $out[] = $this->stopAd();
@@ -2007,8 +2032,21 @@ DNS-over-HTTPS with IP:
         ];
     }
 
+    /**
+     * An AdGuard upstream as AdGuard writes them: plain IP[:port] or a
+     * tls/https/quic/h3/tcp/udp/sdns URL, optionally for [/domains/] only.
+     */
+    public function validUpstream($u): bool
+    {
+        return is_string($u) && (bool) preg_match('~^(?:\[/[A-Za-z0-9.*/_-]+/\])?(?:(?:tls|https|quic|h3|tcp|udp|sdns)://[^\s]+|[0-9A-Fa-f:.\[\]]+)$~D', $u);
+    }
+
     public function upstream($url)
     {
+        if (!$this->validUpstream($url = trim((string) $url))) {
+            $this->send($this->input['chat'], 'wrong upstream, like 8.8.8.8, tls://dns.quad9.net or https://dns.google/dns-query');
+            return $this->menu('adguard');
+        }
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $out[] = $this->stopAd();
@@ -5463,7 +5501,8 @@ DNS-over-HTTPS with IP:
                                 "format"          => "binary",
                                 "url"             => $url,
                                 "http_client"     => "direct",
-                                "update_interval" => $time
+                                // sing-box wants a duration ("86400s"); the list keeps plain seconds for mihomo
+                                "update_interval" => ctype_digit((string) $time) ? "{$time}s" : $time
                             ];
                             $route['rules'][$t[$type]]['rule_set'][] = $k;
                         }
