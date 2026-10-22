@@ -2076,6 +2076,26 @@ DNS-over-HTTPS with IP:
         $this->menu('adguard');
     }
 
+    /**
+     * AdGuard answers: its web interface (ad:80) or plain DNS. The web check
+     * keeps the status right when plain DNS is turned off in AdGuard.
+     */
+    public function adguardUp(): bool
+    {
+        $ch = curl_init('http://ad/');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_NOBODY         => true,
+            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_TIMEOUT        => 2,
+        ]);
+        curl_exec($ch);
+        if (curl_getinfo($ch, CURLINFO_HTTP_CODE) > 0) {
+            return true;
+        }
+        return (bool) exec("JSON=1 timeout 2 dnslookup google.com ad");
+    }
+
     public function startAd()
     {
         return $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
@@ -3022,7 +3042,7 @@ DNS-over-HTTPS with IP:
             $status  = [
                 $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
                 $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
-                $this->i18n(exec("JSON=1 timeout 2 dnslookup google.com ad") ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
+                $this->i18n($this->adguardUp() ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
             ];
             $portcol = [
                 $this->i18n('on') . ' 443',
@@ -3764,7 +3784,7 @@ DNS-over-HTTPS with IP:
 
         switch ($s) {
             case 2:
-                return "sing-box://import-remote-profile/?url={$si}#{$c['inbounds'][0]['settings']['clients'][$i]['email']}";
+                return "sing-box://import-remote-profile/?url={$si}#" . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
 
             default:
                 switch ($pac['transport']) {
@@ -3776,7 +3796,7 @@ DNS-over-HTTPS with IP:
                                     . "&sid={$c['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0]}"
                                     . "&type=tcp"
                                     . "&flow=xtls-rprx-vision"
-                                    . "#{$c['inbounds'][0]['settings']['clients'][$i]['email']}";
+                                    . '#' . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
                         break;
                     case 'xhttp':
                         $link = "vless://{$c['inbounds'][0]['settings']['clients'][$i]['id']}@$domain:443"
@@ -3791,7 +3811,7 @@ DNS-over-HTTPS with IP:
                                     . "&sni=$domain"
                                     . "&fp=chrome"
                                     . "&alpn=h2"
-                                    . "#{$c['inbounds'][0]['settings']['clients'][$i]['email']}";
+                                    . '#' . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
                         break;
 
                     default:
@@ -3802,7 +3822,7 @@ DNS-over-HTTPS with IP:
                                     . "&sni=$domain"
                                     . "&fp=chrome"
                                     . "&type=ws"
-                                    . "#{$c['inbounds'][0]['settings']['clients'][$i]['email']}";
+                                    . '#' . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
                         break;
                 }
                 return $link;
@@ -3999,7 +4019,7 @@ DNS-over-HTTPS with IP:
         }
         foreach ($users as $user) {
             if (!$this->validName($user[0] ?? '') || (!empty($user[1]) && !preg_match('~^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$~iD', $user[1]))) {
-                $this->send($this->input['chat'], 'wrong user: name[:uuid], name of letters, digits, space . _ @ -');
+                $this->send($this->input['chat'], 'wrong user: name[:uuid], name of letters, digits, emoji, space . _ @ -');
                 return $this->xray();
             }
             $uuid = ($user[1] ?? '') ?: trim($this->ssh('xray uuid', 'xr'));
@@ -4045,7 +4065,7 @@ DNS-over-HTTPS with IP:
     public function renXrUs($name, $i)
     {
         if (!$this->validName($name = trim((string) $name))) {
-            $this->send($this->input['chat'], 'wrong name: letters, digits, space . _ @ -');
+            $this->send($this->input['chat'], 'wrong name: letters, digits, emoji, space . _ @ -');
             return $this->userXr($i);
         }
         $c   = $this->getXray();
@@ -4914,17 +4934,12 @@ DNS-over-HTTPS with IP:
         $hash   = $this->getHashBot();
 
         $name   = rawurlencode((string) ($c['email'] ?? ''));
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? '')) . "\n";
+        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? ''));
         if (file_exists(__DIR__ . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
         // sing-box has no XHTTP transport: no sing-box links while XHTTP is on
         $sing = ($pac['transport'] ?? '') != 'xhttp';
-        if ($sing) {
-            $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#$name'>import://sing-box</a>";
-        }
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#$name'>import://mihomo</a>";
-        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=hp&r=hp&s={$c['id']}#$name'>import://happ</a>";
 
         $si = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
             'h' => $hash,
@@ -4943,6 +4958,12 @@ DNS-over-HTTPS with IP:
         }
         $text[] = "\nMihomo:\n<pre><code>$cl</code></pre>";
         $text[] = "\nHapp:\n<pre><code>$scheme://{$domain}/pac$hash?t=hp&s={$c['id']}</code></pre>";
+        $text[] = '';
+        if ($sing) {
+            $text[] = "<a href='$scheme://{$domain}/pac$hash?t=si&r=si&s={$c['id']}#$name'>import://sing-box</a>";
+        }
+        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#$name'>import://mihomo</a>";
+        $text[] = "<a href='$scheme://{$domain}/pac$hash?t=hp&r=hp&s={$c['id']}#$name'>import://happ</a>";
 
         $st       = $this->getXrayStats();
         [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $c));
@@ -4962,12 +4983,6 @@ DNS-over-HTTPS with IP:
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=cl&s={$c['id']}"]
             ],
         ]));
-        $data[] = [
-            [
-                'text'          => $this->i18n($c['off'] ? 'off' : 'on'),
-                'callback_data' => "/switchXr $i",
-            ],
-        ];
         $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : 'default(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : 'origin') . ')';
         $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : 'default(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : 'origin') . ')';
         $data[]        = array_values(array_filter([
@@ -4992,6 +5007,11 @@ DNS-over-HTTPS with IP:
             [
                 'text'          => $this->i18n('rename'),
                 'callback_data' => "/renameXrUser $i",
+            ],
+            [
+                // the user's state, pressing it switches the user on/off
+                'text'          => $this->i18n($c['off'] ? 'off' : 'on') . ($c['off'] ? ' off' : ' on'),
+                'callback_data' => "/switchXr $i",
             ],
             [
                 'text'          => $this->i18n('delete'),
@@ -5805,11 +5825,13 @@ DNS-over-HTTPS with IP:
 
     /**
      * A user name shown in menus and written into Xray/AdGuard configs and
-     * client links: letters, digits, space and . _ @ -, up to 64 chars.
+     * client links: letters, digits, emoji (flags, skin tones, ZWJ
+     * sequences), space and . _ @ -, up to 64 characters. No control or
+     * other invisible characters.
      */
     public function validName($name): bool
     {
-        return is_string($name) && (bool) preg_match('~^[\p{L}\p{N}][\p{L}\p{N} ._@-]{0,63}$~uD', $name);
+        return is_string($name) && (bool) preg_match('~^[\p{L}\p{N}\p{So}][\p{L}\p{N}\p{M}\p{So}\p{Sk} ._@\x{200D}-]{0,63}$~uD', $name);
     }
 
     /**
@@ -5926,7 +5948,7 @@ DNS-over-HTTPS with IP:
             $text .= "DNS over HTTPS:\n<code>$ip</code>\n<code>$scheme://$domain/dns-query$hash" . (!empty($conf['adguardkey']) ? "/{$conf['adguardkey']}" : '') . "</code>\n\n";
             $text .= "DNS over TLS:\n<code>tls://" . (!empty($conf['adguardkey'] )? "{$conf['adguardkey']}." : '') . "$domain</code>";
         }
-        $status = $this->i18n(exec("JSON=1 timeout 2 dnslookup google.com ad") ? 'on' : 'off');
+        $status = $this->i18n($this->adguardUp() ? 'on' : 'off');
         $safesearch = yaml_parse_file($this->adguard)['filtering']['safe_search']['enabled'];
         $text .= "\n\nstatus: $status\t\tsafesearch: " . $this->i18n($safesearch ? 'on' : 'off');
         $allowedClients = yaml_parse_file($this->adguard)['dns']['allowed_clients'];
