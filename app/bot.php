@@ -406,6 +406,9 @@ class Bot
             case preg_match('~^/warp$~', $this->input['callback'], $m):
                 $this->warp();
                 break;
+            case preg_match('~^/warpRenew( 1)?$~', $this->input['callback'], $m):
+                $this->warpRenew(!empty($m[1]));
+                break;
             case preg_match('~^/warpPlus$~', $this->input['callback'], $m):
                 $this->warpPlus();
                 break;
@@ -4441,7 +4444,7 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter key",
+            "@{$this->input['username']} WARP+ license key (\"-\" removes it); WARP gets a new account and keys",
             $this->input['message_id'],
             reply: 'enter key',
         );
@@ -4453,11 +4456,25 @@ DNS-over-HTTPS with IP:
         ];
     }
 
+    /**
+     * New WARP account, profile and keys (wgcf register / generate), with
+     * the WARP+ license key if given. WARP is down for a few seconds.
+     */
     public function addWarpPlus($key)
     {
         $c    = $this->getPacConf();
         $chat = $this->input['chat'];
         $log  = '';
+        $key  = trim((string) $key);
+        if ($key === '-') {
+            $key = '';
+        }
+        // checked before anything is torn down: the key goes into a sed
+        // expression, WARP+ keys are letters, digits and dashes
+        if ($key !== '' && !preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key)) {
+            $this->send($chat, 'wrong license key');
+            return $this->warp();
+        }
 
         $step = function($label, $cmd, $container) use ($chat, &$log) {
             $log .= "$label...";
@@ -4485,11 +4502,6 @@ DNS-over-HTTPS with IP:
             return;
         }
 
-        // the key goes into a sed expression: WARP+ keys are letters, digits and dashes
-        if (!empty($key) && !preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key)) {
-            $this->send($chat, 'wrong license key');
-            return;
-        }
         if (!empty($key)) {
             $c['warp'] = $key;
             // Заменяем ключ в wgcf-account.toml
@@ -4653,6 +4665,31 @@ DNS-over-HTTPS with IP:
         }
     }
 
+    // new WARP account and keys, the WARP+ key (if set) stays: asks first
+    public function warpRenew($yes = false)
+    {
+        if ($yes) {
+            return $this->addWarpPlus((string) ($this->getPacConf()['warp'] ?? ''));
+        }
+        $this->update(
+            $this->input['chat'],
+            $this->input['message_id'],
+            "Menu -> " . $this->i18n('warp') . " -> " . $this->i18n('new keys') . "\n\nWARP gets a new account, profile and keys (wgcf register), the WARP+ key stays. WARP is down for a few seconds. Cloudflare limits registrations: not too often.",
+            [
+                [
+                    [
+                        'text'          => $this->i18n('yes'),
+                        'callback_data' => '/warpRenew 1',
+                    ],
+                    [
+                        'text'          => $this->i18n('back'),
+                        'callback_data' => '/warp',
+                    ],
+                ],
+            ],
+        );
+    }
+
     public function warp()
     {
         $p      = $this->getPacConf();
@@ -4667,6 +4704,10 @@ DNS-over-HTTPS with IP:
             [
                 'text'          => $this->i18n('set key'),
                 'callback_data' => "/warpPlus",
+            ],
+            [
+                'text'          => $this->i18n('new keys'),
+                'callback_data' => "/warpRenew",
             ],
         ];
         $data[] = [
