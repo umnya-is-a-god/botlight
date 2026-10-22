@@ -3047,11 +3047,11 @@ DNS-over-HTTPS with IP:
             $portcol = [
                 $this->i18n('on') . ' 443',
                 $this->i18n('on') . ' 443',
-                $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port unavailable'),
+                $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port is closed'),
             ];
             if ($dnstt) {
                 $status[]  = $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
-                $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port unavailable');
+                $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port is closed');
             }
             $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
             $portcol[] = '';
@@ -5639,7 +5639,7 @@ DNS-over-HTTPS with IP:
                                 "url"             => $url,
                                 "http_client"     => "direct",
                                 // sing-box wants a duration ("86400s"); the list keeps plain seconds for mihomo
-                                "update_interval" => ctype_digit((string) $time) ? "{$time}s" : $time
+                                "update_interval" => preg_match('~^\d+$~D', (string) $time) ? "{$time}s" : $time
                             ];
                             $route['rules'][$t[$type]]['rule_set'][] = $k;
                         }
@@ -6515,30 +6515,61 @@ DNS-over-HTTPS with IP:
         $this->logs();
     }
 
+    /**
+     * After an update (scripts/update.sh resets the repository, so the
+     * config files are back to their defaults) the settings come back from
+     * the plain backup the bot left in /update/json. The update files are
+     * cleared first, so a failure here cannot repeat on every start. A
+     * backup is applied only over default settings: if the settings were
+     * changed since (the backup is stale), they are kept and the backup is
+     * set aside.
+     */
     public function selfUpdate()
     {
-        $ip                         = $this->ip;
-        $rm                         = explode(':', trim(file_get_contents('/update/reload_message')));
-        $m                          = file_get_contents('/update/message');
-        $this->input['chat']        = $rm[0];
-        $this->input['message_id']  = $rm[1] ?? false;
-        $this->input['callback_id'] = $rm[1] ?? false;
-        if (file_exists($this->update)) {
-            $this->selfupdate = true;
-            if (!empty($m)) {
-                $this->send($this->input['chat'], "<pre>$m</pre>", $rm[1]);
-            }
-            $r = $this->send($this->input['chat'], "import settings");
-            $this->input['message_id']  = $r['result']['message_id'];
-            $this->input['callback_id'] = $r['result']['message_id'];
-            $this->importFile($this->update);
-            unlink($this->update);
-        }
+        $rm = explode(':', trim((string) @file_get_contents('/update/reload_message')));
+        $m  = trim((string) @file_get_contents('/update/message'));
         file_put_contents('/update/message', '');
         file_put_contents('/update/reload_message', '');
+        require __DIR__ . '/config.php';
+        $chat = preg_match('~^-?\d+$~D', $rm[0] ?? '') ? (int) $rm[0] : (int) ($c['admin'][0] ?? 0);
+        $to   = preg_match('~^\d+$~D', $rm[1] ?? '') ? (int) $rm[1] : null;
+        if (file_exists($this->update)) {
+            $this->selfupdate = true;
+            if ($m !== '') {
+                $this->send($chat, '<pre>' . htmlspecialchars($m) . '</pre>', $to);
+            }
+            if ($this->defaultSettings()) {
+                $r = $this->send($chat, "import settings");
+                $this->input['chat']        = $chat;
+                $this->input['message_id']  = $r['result']['message_id'] ?? 0;
+                $this->input['callback_id'] = false;
+                try {
+                    $this->importFile($this->update);
+                    @unlink($this->update);
+                } catch (Throwable $e) {
+                    $kept = '/update/json.failed-' . date('Ymd-His');
+                    @rename($this->update, $kept);
+                    $this->send($chat, 'import settings failed: ' . htmlspecialchars($e->getMessage()) . "\nthe backup is kept as " . basename($kept) . ' in the bot folder update/');
+                }
+            } else {
+                $kept = '/update/json.unapplied-' . date('Ymd-His', (int) filemtime($this->update));
+                @rename($this->update, $kept);
+                $this->send($chat, 'a settings backup from ' . date('Y-m-d H:i', (int) filemtime($kept)) . ' was not applied: the current settings are not the defaults, so they were kept. The backup is saved as ' . basename($kept) . ' in the bot folder update/');
+            }
+        }
         $pac = $this->getPacConf();
         unset($pac['restart']);
         $this->setPacConf($pac);
+    }
+
+    // settings as after a repository reset: Xray config of the repository, no own settings in pac.json
+    public function defaultSettings(): bool
+    {
+        $repo = shell_exec('git -C / show HEAD:config/xray.json 2>/dev/null');
+        if (!empty($repo) && json_decode($repo, true) == $this->getXray()) {
+            return true;
+        }
+        return !array_diff_key($this->getPacConf() ?: [], array_flip(['hashbot', 'oc_domain', 'restart']));
     }
 
     public function backup()
