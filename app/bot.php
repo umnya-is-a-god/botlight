@@ -3691,6 +3691,10 @@ DNS-over-HTTPS with IP:
                     'text'          => $v,
                     'callback_data' => "/ocUser $k",
                 ],
+                [
+                    'text'          => $this->i18n('delete'),
+                    'callback_data' => "/deloc $k",
+                ],
             ];
         }
         $data[] = [
@@ -3721,10 +3725,6 @@ DNS-over-HTTPS with IP:
                     [
                         'text'          => $this->i18n('rename'),
                         'callback_data' => "/renameOcUser $i",
-                    ],
-                    [
-                        'text'          => $this->i18n('delete'),
-                        'callback_data' => "/deloc $i",
                     ],
                 ],
                 [
