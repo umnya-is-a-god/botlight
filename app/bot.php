@@ -322,14 +322,8 @@ class Bot
             case preg_match('~^/changeOcPass$~', $this->input['callback'], $m):
                 $this->changeOcPass();
                 break;
-            case preg_match('~^/changeOcDns$~', $this->input['callback'], $m):
-                $this->changeOcDns();
-                break;
             case preg_match('~^/addOcUser$~', $this->input['callback'], $m):
                 $this->addOcUser();
-                break;
-            case preg_match('~^/changeOcExpose$~', $this->input['callback'], $m):
-                $this->changeOcExpose();
                 break;
             case preg_match('~^/addXrUser$~', $this->input['callback'], $m):
                 $this->addXrUser();
@@ -639,21 +633,6 @@ class Bot
         ];
     }
 
-    public function changeOcDns()
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter dns",
-            $this->input['message_id'],
-            reply: 'enter password',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'chocdns',
-            'args'           => [],
-        ];
-    }
 
     public function changeOcPass()
     {
@@ -774,18 +753,6 @@ class Bot
         }
     }
 
-    public function chocdns($dns)
-    {
-        // one line of ocserv.conf: a single IP address
-        if (!filter_var($dns = trim((string) $dns), FILTER_VALIDATE_IP)) {
-            $this->send($this->input['chat'], 'wrong dns: one IP address, like 10.10.0.5');
-            return $this->menu('oc');
-        }
-        $c = file_get_contents('/config/ocserv.conf');
-        $t = preg_replace('~^dns[^\n]+~sm', "dns = $dns", $c);
-        $this->restartOcserv($t);
-        $this->menu('oc');
-    }
 
     public function chOcSubdomain($domain)
     {
@@ -3881,10 +3848,6 @@ DNS-over-HTTPS with IP:
         $ocserv = file_get_contents('/config/ocserv.conf');
         preg_match('~^camouflage_secret[^\n]+?"([^"]+)*"~sm', $ocserv, $m);
         $cs = $m[1];
-        preg_match('~^dns = ([^\n]+)~sm', $ocserv, $m);
-        $dns = $m[1];
-        preg_match('~^expose-iroutes = (true)~sm', $ocserv, $m);
-        $expose = $m[1];
         $pass   = htmlspecialchars((string) ($pac['ocserv'] ?? ''));
         $text[] = "Menu -> OpenConnect";
         if (!empty($cs)) {
@@ -3908,20 +3871,8 @@ DNS-over-HTTPS with IP:
         ];
         $data[] = [
             [
-                'text'          => $this->i18n('dns') . ": $dns",
-                'callback_data' => "/changeOcDns",
-            ],
-        ];
-        $data[] = [
-            [
                 'text'          =>  $this->i18n('listSubnet'),
                 'callback_data' => "/subnet 0",
-            ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('expose-iroutes') . ' ' . $this->i18n($expose ? 'on' : 'off'),
-                'callback_data' => "/changeOcExpose",
             ],
         ];
         $data[] = [
@@ -3951,14 +3902,6 @@ DNS-over-HTTPS with IP:
         ];
     }
 
-    public function changeOcExpose()
-    {
-        $c = file_get_contents('/config/ocserv.conf');
-        preg_match('~^expose-iroutes = ([^\n]+)~sm', $c, $m);
-        $t = preg_replace('~^expose-iroutes[^\n]+~sm', "expose-iroutes = " . ($m[1] == 'true' ? 'false' : 'true'), $c);
-        $this->restartOcserv($t);
-        $this->menu('oc');
-    }
 
     public function deloc($i)
     {

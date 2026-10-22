@@ -177,10 +177,6 @@ $i = [
         'en' => 'fake html',
         'ru' => 'фейк заглушка',
     ],
-    'expose-iroutes'  => [
-        'en' => 'expose-iroutes',
-        'ru' => 'изоляция клиентов',
-    ],
     'fill allowed clients'  => [
         'en' => 'fill allowed clients',
         'ru' => 'заполнить белый список клиентов',
