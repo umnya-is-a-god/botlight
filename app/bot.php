@@ -3897,8 +3897,6 @@ DNS-over-HTTPS with IP:
                 'text'          => $this->i18n('change subdomain'),
                 'callback_data' => "/changeOcDomain",
             ],
-        ];
-        $data[] = [
             [
                 'text'          => $this->i18n('change secret'),
                 'callback_data' => "/changeCamouflage",
@@ -3936,7 +3934,7 @@ DNS-over-HTTPS with IP:
         foreach ($clients as $k => $v) {
             $data[] = [
                 [
-                    'text'          => $this->i18n('delete') . " $v",
+                    'text'          => "$v " . $this->i18n('delete'),
                     'callback_data' => "/deloc $k",
                 ],
             ];
