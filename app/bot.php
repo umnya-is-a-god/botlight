@@ -4702,7 +4702,7 @@ DNS-over-HTTPS with IP:
         $text[] = "<pre>$c</pre>";
         $data[] = [
             [
-                'text'          => $this->i18n('set key'),
+                'text'          => 'set warp+',
                 'callback_data' => "/warpPlus",
             ],
             [
