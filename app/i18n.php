@@ -1,10 +1,6 @@
 <?php
 
 $i = [
-    'new keys'             => [
-        'en' => 'new keys',
-        'ru' => 'новые ключи',
-    ],
     'happ routing'         => [
         'en' => 'Happ routing',
         'ru' => 'Маршруты Happ',
