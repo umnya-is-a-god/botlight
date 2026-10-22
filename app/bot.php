@@ -3047,11 +3047,11 @@ DNS-over-HTTPS with IP:
             $portcol = [
                 $this->i18n('on') . ' 443',
                 $this->i18n('on') . ' 443',
-                $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : 'port is closed'),
+                $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : ' port is closed'),
             ];
             if ($dnstt) {
                 $status[]  = $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
-                $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : 'port is closed');
+                $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : ' port is closed');
             }
             $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
             $portcol[] = '';
