@@ -4,7 +4,10 @@ FROM $image
 ARG microsocks_commit=307950cb1296b521fe86384fd695062ade5304b5
 ARG wgcf_version=2.2.22
 ARG wgcf_sha256=268d187e649870b603ad2e5c1b74a696251f6c2f6f075c726a174a0039b0b1e2
-RUN apk add --no-cache --virtual .build-deps alpine-sdk git \
+# security updates of the base image's packages (ca-certificates, openssl, ...)
+# on every build, not only what the base image was pulled with
+RUN apk upgrade --no-cache \
+    && apk add --no-cache --virtual .build-deps alpine-sdk git \
     && apk add --no-cache iproute2 iptables openssh wireguard-tools jq bash \
     && git init -q /tmp/microsocks \
     && git -C /tmp/microsocks fetch -q --depth 1 https://github.com/rofl0r/microsocks $microsocks_commit \

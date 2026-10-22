@@ -4,7 +4,10 @@ FROM $image
 # against the sha512 from the Alpine aports recipe (testing/ocserv)
 ARG ocserv_version=1.6.0
 ARG ocserv_sha512=512d882b025d157023d0d658a19fbc5f9ecbee9949cd43f3e785e694c97c8c21200a396a64b8990bd9d332e713bfd85e4b2935969755280864b5bc73520f740c
-RUN apk add --no-cache openssh \
+# security updates of the base image's packages (ca-certificates, openssl, ...)
+# on every build, not only what the base image was pulled with
+RUN apk upgrade --no-cache \
+    && apk add --no-cache openssh \
     iptables \
     gnutls-dev \
     libev-dev \

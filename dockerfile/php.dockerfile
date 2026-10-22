@@ -10,7 +10,10 @@ ARG singbox_version=1.14.3
 ARG singbox_sha256=41fc81fd041134d4d7d850a928d7d2cde17a7d6563953f406b22d32a68bfab1f
 ARG mihomo_version=1.19.32
 ARG mihomo_sha256=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10
-RUN apk add --no-cache --update php83 \
+# security updates of the base image's packages (ca-certificates, openssl, ...)
+# on every build, not only what the base image was pulled with
+RUN apk upgrade --no-cache \
+    && apk add --no-cache --update php83 \
     php83-fpm \
     php83-mbstring \
     php83-session \

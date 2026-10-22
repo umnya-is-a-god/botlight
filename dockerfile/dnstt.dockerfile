@@ -9,7 +9,10 @@ FROM $image
 COPY --from=go /go/bin/dnstt-server /usr/local/bin/
 # vpnbot: the shared tunnel account; a fixed uid for the iptables owner
 # rules in start_dnstt.sh
-RUN apk add --no-cache openssh iptables \
+# security updates of the base image's packages (ca-certificates, openssl, ...)
+# on every build, not only what the base image was pulled with
+RUN apk upgrade --no-cache \
+    && apk add --no-cache openssh iptables \
     && mkdir -p /root/.ssh \
     && adduser -D -u 10001 -s /bin/sh vpnbot
 ENV ENV="/root/.ashrc"
