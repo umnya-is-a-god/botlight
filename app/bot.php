@@ -298,18 +298,6 @@ class Bot
             case preg_match('~^/backup$~', $this->input['callback'], $m):
                 $this->backup();
                 break;
-            case preg_match('~^/subnet (-?\d+)$~', $this->input['callback'], $m):
-                $this->subnet((int) $m[1]);
-                break;
-            case preg_match('~^/subnetAdd (-?\d+)$~', $this->input['callback'], $m):
-                $this->subnetAdd((int) $m[1]);
-                break;
-            case preg_match('~^/subnetDelete (\d+)_(-?\d+)$~', $this->input['callback'], $m):
-                $this->subnetDelete((int) $m[1], (int) $m[2]);
-                break;
-            case preg_match('~^/calc$~', $this->input['callback'], $m):
-                $this->calc();
-                break;
             case preg_match('~^/selfssl$~', $this->input['callback'], $m):
                 $this->selfssl();
                 break;
@@ -369,6 +357,12 @@ class Bot
                 break;
             case preg_match('~^/deloc (\d+)$~', $this->input['callback'], $m):
                 $this->deloc($m[1]);
+                break;
+            case preg_match('~^/ocUser (\d+)$~', $this->input['callback'], $m):
+                $this->ocUser((int) $m[1]);
+                break;
+            case preg_match('~^/renameOcUser (\d+)$~', $this->input['callback'], $m):
+                $this->renameOcUser((int) $m[1]);
                 break;
             case preg_match('~^/userXr (\d+)$~', $this->input['callback'], $m):
                 $this->userXr($m[1]);
@@ -2282,191 +2276,6 @@ DNS-over-HTTPS with IP:
         $this->restartXray($xr);
     }
 
-    // OpenConnect routes: subnets pushed to clients instead of "default"
-    public function subnetAdd($page)
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter subnet separated by commas",
-            $this->input['message_id'],
-            reply: 'enter subnet separated by commas',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'subnetSave',
-            'args'           => [$page],
-        ];
-    }
-
-    // an IPv4 network like 10.0.0.0/24: the only thing written as an ocserv route
-    public function validSubnet($v): bool
-    {
-        return is_string($v)
-            && (bool) preg_match('~^(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})$~D', $v, $m)
-            && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
-            && (int) $m[2] <= 32;
-    }
-
-    public function subnetSave($text, $page)
-    {
-        $c     = $this->getPacConf();
-        $items = array_filter(array_map('trim', explode(',', (string) $text)), 'strlen');
-        $good  = array_values(array_filter($items, [$this, 'validSubnet']));
-        if (count($good) < count($items)) {
-            $this->send($this->input['chat'], 'wrong subnet, expected like 10.0.0.0/24: ' . htmlspecialchars(implode(', ', array_diff($items, $good))));
-        }
-        if ($good) {
-            $c['subnets'] = array_values(array_unique(array_merge(array_values($c['subnets'] ?? []), $good)));
-            $this->setPacConf($c);
-            $page = -2; // the last page, where the new ones are
-            $this->ocservRoute();
-        }
-        $this->subnet($page);
-    }
-
-    public function subnetDelete($k, $page = 0)
-    {
-        $c = $this->getPacConf();
-        unset($c['subnets'][$k]);
-        $c['subnets'] = array_values($c['subnets'] ?? []);
-        $this->setPacConf($c);
-        $this->ocservRoute();
-        $this->subnet($page);
-    }
-
-    /**
-     * Rewrites the "route = ..." lines of ocserv.conf from the subnet list:
-     * one line per subnet, "route = default" when the list is empty.
-     */
-    public function ocservRoute()
-    {
-        $p      = $this->getPacConf();
-        $c      = file_get_contents('/config/ocserv.conf');
-        $t      = rtrim(preg_replace('~^route\s*=[^\n]*\n?~m', '', $c), "\n") . "\n";
-        $routes = array_values(array_filter($p['subnets'] ?? [], [$this, 'validSubnet']));
-        foreach ($routes ?: ['default'] as $v) {
-            $t .= "route = $v\n";
-        }
-        $this->restartOcserv($t);
-    }
-
-    public function calc()
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} enter like '10.0.0.0/24, -10.0.0.5/32'",
-            $this->input['message_id'],
-            reply: 'enter like \'10.0.0.0/24, -10.0.0.5/32\'',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'calcSubnet',
-            'args'           => [],
-        ];
-    }
-
-    public function calcSubnet($text)
-    {
-        $text = explode(',', $text);
-        $text = array_map(fn ($e) => trim($e), $text);
-        if (!empty($text)) {
-            foreach ($text as $k => $v) {
-                if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}~', $v)) {
-                    $include[] = $v;
-                }
-                if (preg_match('~^-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2})~', $v, $m)) {
-                    $exclude[] = $m[1];
-                }
-            }
-        }
-        if (!empty($include)) {
-            foreach ($include as $k => $v) {
-                $t = explode('/', $v);
-                $include[$k] = [ip2long($t[0]), ip2long($t[0]) + (1 << (32 - $t[1])) - 1];
-            }
-            if (!empty($exclude)) {
-                foreach ($exclude as $k => $v) {
-                    $t = explode('/', $v);
-                    $exclude[$k] = [ip2long($t[0]), ip2long($t[0]) + (1 << (32 - $t[1])) - 1];
-                }
-            }
-            require_once __DIR__ . '/calc.php';
-            $c = new Calc();
-            $r = $c->prepare($include, $exclude ?: []);
-            if (!empty($r)) {
-                $t = [];
-                foreach ($r as $k => $v) {
-                    $t = array_merge($t, $c->toCIDR($v[0], $v[1]));
-                }
-                $this->send($this->input['chat'], '<pre>' . implode(', ', $t) . '</pre>');
-            }
-        }
-    }
-
-    public function subnet($page = 0)
-    {
-        $count  = $this->limit;
-        $text   = 'Menu -> Openconnect -> ' . $this->i18n('listSubnet') . "\n";
-        $data[] = [
-            [
-                'text'          => $this->i18n('calc'),
-                'callback_data' => "/calc",
-            ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('add'),
-                'callback_data' => "/subnetAdd $page",
-            ],
-        ];
-        $subnets = $this->getPacConf()['subnets'] ?? [];
-        if (!empty($subnets)) {
-            $all     = (int) ceil(count($subnets) / $count);
-            $page    = $page < 0 ? $all - 1 : min((int) $page, $all - 1);
-            foreach (array_slice($subnets, $page * $count, $count, true) as $k => $v) {
-                $data[] = [
-                    [
-                        'text'          => $this->i18n('delete') . " $v",
-                        'callback_data' => "/subnetDelete {$k}_{$page}",
-                    ],
-                ];
-            }
-            if ($all > 1) {
-                $data[] = [
-                    [
-                        'text'          => '<<',
-                        'callback_data' => "/subnet " . ($page - 1 >= 0 ? $page - 1 : $all - 1),
-                    ],
-                    [
-                        'text'          => $page + 1,
-                        'callback_data' => "/subnet $page",
-                    ],
-                    [
-                        'text'          => '>>',
-                        'callback_data' => "/subnet " . ($page < $all - 1 ? $page + 1 : 0),
-                    ],
-                ];
-            }
-        }
-        $data[] = [
-            [
-                'text'          => $this->i18n('back'),
-                'callback_data' => '/menu oc',
-            ],
-        ];
-        $this->update(
-            $this->input['chat'],
-            $this->input['message_id'],
-            $text,
-            $data ?: false,
-        );
-    }
-
-
-
-
     public function pacMenu($page = 0)
     {
         // the domain list goes into the subscriptions (~pac~ in templates)
@@ -3871,12 +3680,6 @@ DNS-over-HTTPS with IP:
         ];
         $data[] = [
             [
-                'text'          =>  $this->i18n('listSubnet'),
-                'callback_data' => "/subnet 0",
-            ],
-        ];
-        $data[] = [
-            [
                 'text'          => $this->i18n('add peer'),
                 'callback_data' => "/addOcUser",
             ],
@@ -3885,8 +3688,8 @@ DNS-over-HTTPS with IP:
         foreach ($clients as $k => $v) {
             $data[] = [
                 [
-                    'text'          => "$v " . $this->i18n('delete'),
-                    'callback_data' => "/deloc $k",
+                    'text'          => $v,
+                    'callback_data' => "/ocUser $k",
                 ],
             ];
         }
@@ -3902,6 +3705,78 @@ DNS-over-HTTPS with IP:
         ];
     }
 
+
+    public function ocUser(int $i)
+    {
+        $clients = $this->getClientsOc();
+        if (!isset($clients[$i])) {
+            return $this->menu('oc');
+        }
+        $this->update(
+            $this->input['chat'],
+            $this->input['message_id'],
+            'Menu -> OpenConnect -> ' . htmlspecialchars($clients[$i]),
+            [
+                [
+                    [
+                        'text'          => $this->i18n('rename'),
+                        'callback_data' => "/renameOcUser $i",
+                    ],
+                    [
+                        'text'          => $this->i18n('delete'),
+                        'callback_data' => "/deloc $i",
+                    ],
+                ],
+                [
+                    [
+                        'text'          => $this->i18n('back'),
+                        'callback_data' => '/menu oc',
+                    ],
+                ],
+            ],
+        );
+    }
+
+    public function renameOcUser(int $i)
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} enter name",
+            $this->input['message_id'],
+            reply: 'enter name',
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => 'renOcUs',
+            'args'           => [$i],
+        ];
+    }
+
+    // all OpenConnect users share one password: the new name gets it, the old one is removed
+    public function renOcUs($name, $i)
+    {
+        $clients = $this->getClientsOc();
+        if (!isset($clients[$i])) {
+            return $this->menu('oc');
+        }
+        if (!preg_match('~^[A-Za-z0-9._@-]{1,64}$~D', $name = trim((string) $name))) {
+            $this->send($this->input['chat'], 'wrong name: A-Z a-z 0-9 . _ @ -');
+            return $this->ocUser($i);
+        }
+        if ($name === $clients[$i]) {
+            return $this->ocUser($i);
+        }
+        if (in_array($name, $clients, true)) {
+            $this->send($this->input['chat'], "user $name already exists");
+            return $this->ocUser($i);
+        }
+        $pac = $this->getPacConf();
+        $this->ssh('echo ' . escapeshellarg((string) ($pac['ocserv'] ?? '')) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($name), 'oc');
+        $this->ssh('ocpasswd -c /etc/ocserv/ocserv.passwd -d ' . escapeshellarg($clients[$i]), 'oc');
+        $k = array_search($name, $this->getClientsOc(), true);
+        return $k === false ? $this->menu('oc') : $this->ocUser((int) $k);
+    }
 
     public function deloc($i)
     {

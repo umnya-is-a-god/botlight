@@ -105,14 +105,6 @@ $i = [
         'en' => '🔴',
         'ru' => '🔴',
     ],
-    'listSubnet'  => [
-        'en' => 'listSubnet',
-        'ru' => 'список подсетей',
-    ],
-    'calc'  => [
-        'en' => 'calc CIDR',
-        'ru' => 'calc CIDR',
-    ],
     'backup'  => [
         'en' => 'auto backup',
         'ru' => 'автобэкап',
