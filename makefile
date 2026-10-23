@@ -44,10 +44,10 @@ oc: # консоль сервиса
 	docker compose exec oc /bin/sh
 service: # консоль сервиса
 	docker compose exec service /bin/sh
-delete:
-	make d
-	docker system prune -f -a
-	docker volume prune -f -a
+delete: # полное удаление бота: только его контейнеры, тома, образы, автозапуск и папка
+	make uncron
+	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null
+	docker compose down -v --rmi all --remove-orphans
 	rm -rf /root/vpnbot
 s:
 	git status -su

@@ -112,3 +112,13 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 Обновления базовых образов (Alpine) — пересборкой: `docker compose build --no-cache && make r`.
 
 Версия Xray: по умолчанию последний стабильный релиз (`XRAY_VERSION=latest` в `.env`); закрепить — например `XRAY_VERSION=v26.3.27`.
+
+## Удаление
+
+```shell
+cd /root/vpnbot && make delete
+```
+
+Удаляет автозапуск, контейнеры бота, его тома (AdGuard, WARP), образы и папку `/root/vpnbot`. Другие контейнеры и образы на сервере, Docker и пакеты, поставленные установщиком, не трогаются. Перед удалением сохраните бэкап (Settings → backup), если он понадобится.
+
+На втором сервере моста: `sudo bash socat.sh remove`.
