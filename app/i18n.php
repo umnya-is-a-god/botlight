@@ -205,6 +205,138 @@ $i = [
         'en' => 'rebuild images',
         'ru' => 'пересобрать образы',
     ],
+    'yes'  => [
+        'en' => 'yes',
+        'ru' => 'да',
+    ],
+    'routes'  => [
+        'en' => 'routes',
+        'ru' => 'маршруты',
+    ],
+    'delete all'  => [
+        'en' => 'delete all',
+        'ru' => 'удалить все',
+    ],
+    'reset stats'  => [
+        'en' => 'reset stats',
+        'ru' => 'сбросить трафик',
+    ],
+    'reset monthly'  => [
+        'en' => 'reset monthly',
+        'ru' => 'сброс ежемесячно',
+    ],
+    'ip limit'  => [
+        'en' => 'ip limit',
+        'ru' => 'лимит IP',
+    ],
+    'main outbound name: '  => [
+        'en' => 'main outbound name: ',
+        'ru' => 'основной outbound: ',
+    ],
+    'sing-box templates'  => [
+        'en' => 'sing-box templates',
+        'ru' => 'шаблоны sing-box',
+    ],
+    'mihomo templates'  => [
+        'en' => 'mihomo templates',
+        'ru' => 'шаблоны mihomo',
+    ],
+    'change subdomain'  => [
+        'en' => 'change subdomain',
+        'ru' => 'изменить поддомен',
+    ],
+    'set subdomain'  => [
+        'en' => 'set subdomain',
+        'ru' => 'задать поддомен',
+    ],
+    'set password'  => [
+        'en' => 'set password',
+        'ru' => 'задать пароль',
+    ],
+    'download pubkey'  => [
+        'en' => 'download pubkey',
+        'ru' => 'скачать публичный ключ',
+    ],
+    'Ports'  => [
+        'en' => 'Ports',
+        'ru' => 'порты',
+    ],
+    'IP ban'  => [
+        'en' => 'IP ban',
+        'ru' => 'бан IP',
+    ],
+    'autoscan'  => [
+        'en' => 'autoscan',
+        'ru' => 'автоскан',
+    ],
+    'autoblock'  => [
+        'en' => 'autoblock',
+        'ru' => 'автоблок',
+    ],
+    'notify'  => [
+        'en' => 'notify',
+        'ru' => 'уведомления',
+    ],
+    'ignorelist'  => [
+        'en' => 'ignorelist',
+        'ru' => 'игнор-лист',
+    ],
+    'blocklist'  => [
+        'en' => 'blocklist',
+        'ru' => 'блок-лист',
+    ],
+    'block'  => [
+        'en' => 'block',
+        'ru' => 'блокировать',
+    ],
+    'ignore'  => [
+        'en' => 'ignore',
+        'ru' => 'игнорировать',
+    ],
+    'routes block'  => [
+        'en' => 'block',
+        'ru' => 'блокировка',
+    ],
+    'analyze'  => [
+        'en' => 'analyze',
+        'ru' => 'анализ',
+    ],
+    'all logs'  => [
+        'en' => 'all logs',
+        'ru' => 'все логи',
+    ],
+    'suspicious log'  => [
+        'en' => 'suspicious log',
+        'ru' => 'подозрительные',
+    ],
+    'clean'  => [
+        'en' => 'clean',
+        'ru' => 'очистить',
+    ],
+    'clean all'  => [
+        'en' => 'clean all',
+        'ru' => 'очистить всё',
+    ],
+    'autoclean'  => [
+        'en' => 'autoclean',
+        'ru' => 'автоочистка',
+    ],
+    'telegram IPs'  => [
+        'en' => 'telegram IPs',
+        'ru' => 'IP Telegram',
+    ],
+    'gcore IPs'  => [
+        'en' => 'gcore IPs',
+        'ru' => 'IP Gcore',
+    ],
+    'cloudflare IPs'  => [
+        'en' => 'cloudflare IPs',
+        'ru' => 'IP Cloudflare',
+    ],
+    'auto update'  => [
+        'en' => 'auto update',
+        'ru' => 'автообновление',
+    ],
 ];
 
 if (file_exists(__DIR__ . '/i18n.override.php')) {

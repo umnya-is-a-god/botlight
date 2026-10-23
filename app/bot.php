@@ -4526,7 +4526,7 @@ DNS-over-HTTPS with IP:
 
         $data = [
             [[
-                'text'          => $this->i18n('block'),
+                'text'          => $this->i18n('routes block'),
                 'callback_data' => "/xtlsblock",
             ]],
             [[
