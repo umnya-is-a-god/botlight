@@ -7,6 +7,8 @@
 !/ssh/.gitkeep
 /sshpub/*
 !/sshpub/.gitkeep
+/sshhost/*
+!/sshhost/.gitkeep
 /sftp-config.json
 /tg.pyr
 /todo.todo

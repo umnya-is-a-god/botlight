@@ -6756,10 +6756,18 @@ DNS-over-HTTPS with IP:
 
     public function ssh($cmd, $service, $wait = true, $log = '/dev/null')
     {
+        $data = '';
         try {
-            $c = ssh2_connect($service, 22);
+            $c = ssh2_connect($service, 22, ['hostkey' => 'ssh-ed25519']);
             if (empty($c)) {
                 throw new Exception("no connection to $service: \n$cmd\n" . var_export($c, true));
+            }
+            // the container must show its own host key (made by php, ./sshhost)
+            $pub = preg_match('~^[a-z]+$~', $service) ? @file_get_contents("/ssh/host_$service.pub") : false;
+            $blob = base64_decode(explode(' ', trim((string) $pub))[1] ?? '', true);
+            if (!$blob || strcasecmp(ssh2_fingerprint($c, SSH2_FINGERPRINT_SHA1 | SSH2_FINGERPRINT_HEX), sha1($blob)) !== 0) {
+                error_log("ssh $service: host key mismatch, command not sent");
+                throw new Exception("host key mismatch: $service\n$cmd");
             }
             $a = ssh2_auth_pubkey_file($c, 'root', '/ssh/key.pub', '/ssh/key');
             if (empty($a)) {

@@ -3,6 +3,12 @@
 # the bot's public key, read on every login: php makes a new key on each
 # start, and a copy taken at this container's start would go stale
 AuthorizedKeysFile	/ssh/key.pub
+# host keys: the ed25519 key stays the same across restarts (./sshhost,
+# made by php) and the bot checks it on every login; the others are made
+# at each container start (ssh-keygen -A) for other clients (DNSTT)
+HostKey /etc/ssh/pinned/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_rsa_key
 HostKeyAlgorithms +ssh-rsa
 PubkeyAcceptedKeyTypes +ssh-rsa
 LogLevel QUIET
