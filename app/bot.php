@@ -175,6 +175,9 @@ class Bot
             case preg_match('~^/setIpLimit$~', $this->input['callback'], $m):
                 $this->setIpLimit();
                 break;
+            case preg_match('~^/setBridge$~', $this->input['callback'], $m):
+                $this->bridgePrompt();
+                break;
             case preg_match('~^/searchLogs (.+)$~', $this->input['message'], $m):
                 $this->searchLogs($m[1]);
                 break;
@@ -2853,6 +2856,10 @@ DNS-over-HTTPS with IP:
             }
             $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
             $portcol[] = '';
+            if (!empty($conf['bridge'])) {
+                $status[]  = $this->i18n('on') . ' bridge';
+                $portcol[] = $conf['bridge'];
+            }
             $main[] = '<code>';
             $main[] = $this->alignColumns([$status, $portcol]);
             $main[] = '';
@@ -2976,6 +2983,9 @@ DNS-over-HTTPS with IP:
 
     public function switchIpLimit($limit)
     {
+        if (!empty($this->getPacConf()['bridge'])) {
+            return $this->xray(); // bridge mode: no IP limit
+        }
         $limit = explode(':', $limit);
         $c = $this->getPacConf();
         if ((int) $limit[0] <= 0) {
@@ -3633,17 +3643,26 @@ DNS-over-HTTPS with IP:
     public function mirrorMenu()
     {
         $ports  = $this->mirrorPorts();
+        $bridge = $this->getPacConf()['bridge'] ?? '';
         $text[] = "Menu -> Mirror";
         $text[] = "<pre>client -> mirror (another server) -> this server</pre>";
-        $text[] = 'The mirror forwards this server\'s open ports: tcp ' . implode(' ', $ports['tcp']) . ', udp ' . implode(' ', $ports['udp']) . '. Download the script and run it on the mirror: <code>sudo bash socat.sh</code> (again after opening or closing a port in Settings -> Ports; <code>sudo bash socat.sh remove</code> removes it).';
+        $text[] = 'The mirror forwards this server\'s open ports: tcp ' . implode(' ', $ports['tcp']) . ', udp ' . implode(' ', $ports['udp']) . '. Download the script and run it on the mirror (again after opening or closing a port in Settings -> Ports):';
+        $text[] = '<code>sudo bash socat.sh</code> — to this server over IPv4';
+        $text[] = '<code>sudo bash socat.sh IPv6</code> — over IPv6 (this server\'s IPv6 address)';
+        $text[] = '<code>sudo bash socat.sh remove</code> — remove';
         $text[] = '';
-        $text[] = '• Add the mirror\'s IP to Settings -> IP ban -> ignorelist: all its clients come from that one IP, so the IP analysis could block the whole mirror, and the IP limit cannot tell its users apart.';
-        $text[] = '• Reality: in the client, put the mirror\'s IP as the server address, everything else stays.';
-        $text[] = '• WS / XHTTP need a domain of the mirror with a certificate: not supported.';
+        $text[] = '• Point the domain (and the OpenConnect subdomain) to the mirror: links, subscriptions and certificates keep working through it. Cloudflare: DNS only (grey cloud).';
+        $text[] = '• Set the bridge IP below: the IP limit is turned off (all clients come from that IP) and the IP is added to the ignorelist, so the IP analysis does not block the mirror.';
+        $text[] = '';
+        $text[] = 'bridge IP: ' . ($bridge !== '' ? "<code>$bridge</code>" : 'not set');
         $data[] = [
             [
                 'text'          => $this->i18n('download'),
                 'callback_data' => "/getMirror",
+            ],
+            [
+                'text'          => 'bridge IP: ' . ($bridge !== '' ? $this->i18n('on') . " $bridge" : $this->i18n('off')),
+                'callback_data' => "/setBridge",
             ],
         ];
         $data[] = [
@@ -3656,6 +3675,56 @@ DNS-over-HTTPS with IP:
             'text' => implode("\n", $text),
             'data' => $data,
         ];
+    }
+
+    public function bridgePrompt()
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} IP of the bridge (mirror) server, \"-\" removes it",
+            $this->input['message_id'],
+            reply: 'bridge IP',
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => 'setBridge',
+            'args'           => [],
+        ];
+    }
+
+    /**
+     * Bridge mode: clients come through the mirror, all from its IP. The IP
+     * limit is off (it cannot tell users apart) and the bridge IP is in the
+     * ignorelist (the IP analysis would take it for a scanner).
+     */
+    public function setBridge($text)
+    {
+        $ip  = trim((string) $text);
+        $pac = $this->getPacConf();
+        $old = $pac['bridge'] ?? '';
+        if ($ip !== '-' && !filter_var($ip, FILTER_VALIDATE_IP)) {
+            $this->send($this->input['chat'], 'wrong IP');
+            return $this->menu('mirror');
+        }
+        $white = array_values(array_filter($pac['white'] ?? [], fn($v) => $v !== $old));
+        if ($ip === '-') {
+            unset($pac['bridge']);
+        } else {
+            $pac['bridge'] = $ip;
+            $white[]       = $ip;
+            $restart       = !empty($pac['ip_limit']);
+            unset($pac['ip_limit'], $pac['ip_count']);
+        }
+        $pac['white'] = array_values(array_unique($white));
+        $this->setPacConf($pac);
+        $this->syncDeny();
+        if (!empty($restart)) {
+            // the access log goes off with the limit
+            $this->restartXray($this->getXray());
+            @file_put_contents('/logs/xray', '');
+        }
+        $this->menu('mirror');
     }
 
     // ports the server publishes (docker-compose.yml and the port switches)
@@ -4315,16 +4384,17 @@ DNS-over-HTTPS with IP:
             ],
         ];
         $ip_count = $p['ip_count'] ?: 1;
-        $data[]   = [
+        // behind a bridge every client comes from the bridge's IP: no IP limit
+        $data[]   = array_values(array_filter([
             [
                 'text'          => $p['linkdomain'] ?? $this->i18n('cdn'),
                 'callback_data' => '/addLinkDomain',
             ],
-            [
+            empty($p['bridge']) ? [
                 'text'          => $this->i18n('ip limit') . ' ' . (!empty($p['ip_limit']) ? ": {$p['ip_limit']} sec & $ip_count" : $this->i18n('off')),
                 'callback_data' => "/setIpLimit",
-            ],
-        ];
+            ] : null,
+        ]));
         $data[] = [
             [
                 'text'          => $this->i18n('RLTY') . ' ' . ($p['transport'] == 'Reality' ? $this->i18n('on') : $this->i18n('off')),
