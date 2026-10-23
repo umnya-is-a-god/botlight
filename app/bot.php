@@ -573,6 +573,9 @@ class Bot
             $this->updateXrayStats(function ($p) use ($c, $rename) {
                 $running = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
                 if (($cnt = $this->xrayCounters()) !== null) {
+                    // Xray may have restarted since the last read (the bot
+                    // runs this on every start): its earlier counts first
+                    $p = $this->foldIfXrayRestarted($p, $cnt);
                     $p = $this->applyCounters($p, $cnt, $running);
                 }
                 $p = $this->sessionToGlobal($p);
@@ -898,21 +901,45 @@ class Bot
                 if (($cnt = $this->xrayCounters()) === null) {
                     return $p; // Xray not running: keep the last values
                 }
-                // Xray restarted outside the bot (make r, reboot, update,
-                // crash): its counters began again from zero, so what it had
-                // counted before moves into the totals first. Told by its
-                // uptime going down (not by the clock, which may jump)
-                if (($uptime = $this->xrayUptime()) !== null) {
-                    if (isset($p['xray_uptime']) && $uptime < (int) $p['xray_uptime']) {
-                        $p = $this->sessionToGlobal($p);
-                    }
-                    $p['xray_uptime'] = $uptime;
-                }
+                $p = $this->foldIfXrayRestarted($p, $cnt);
                 $emails = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
                 return $this->applyCounters($p, $cnt, $emails);
             });
         } catch (\Throwable $th) {
         }
+    }
+
+    /*
+     * Xray restarted outside the bot (restart or rebuild button, make r,
+     * reboot, update, crash): its counters began again from zero, so what it
+     * had counted before moves into the totals first. Told by its uptime or
+     * any of its counters going down (not by the clock, which may jump): a
+     * running Xray only counts up. Called before the stats take Xray's
+     * current counters.
+     */
+    public function foldIfXrayRestarted(array $p, array $cnt): array
+    {
+        $uptime    = $this->xrayUptime();
+        $restarted = $uptime !== null && isset($p['xray_uptime']) && $uptime < (int) $p['xray_uptime'];
+        $was       = ['' => $p['session'] ?? []];
+        foreach ($p['users'] ?? [] as $e => $v) {
+            $was[(string) $e] = $v['session'] ?? [];
+        }
+        foreach ($was as $e => $session) {
+            foreach (['download' => 'downlink', 'upload' => 'uplink'] as $k => $dir) {
+                $name = $e === '' ? "inbound>>>vless_tls>>>traffic>>>$dir" : "user>>>$e>>>traffic>>>$dir";
+                if (($cnt[$name] ?? 0) < (int) ($session[$k] ?? 0)) {
+                    $restarted = true;
+                }
+            }
+        }
+        if ($restarted) {
+            $p = $this->sessionToGlobal($p);
+        }
+        if ($uptime !== null) {
+            $p['xray_uptime'] = $uptime;
+        }
+        return $p;
     }
 
     // seconds the running Xray has been up, null when it does not answer
