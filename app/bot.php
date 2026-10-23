@@ -3610,16 +3610,14 @@ DNS-over-HTTPS with IP:
 
     public function mirrorMenu()
     {
-        $ip     = $this->getPacConf()['domain'] ?: $this->ip;
+        $ports  = $this->mirrorPorts();
         $text[] = "Menu -> Mirror";
-        $text[] = <<<PNG
-                    <pre>client -> intermediate VPS -> vpnbot
-                                         ^           |
-                                         |  install  |
-                                         |  mirror   |
-                                          -----------
-                    </pre>
-                    PNG;
+        $text[] = "<pre>client -> mirror (another server) -> this server</pre>";
+        $text[] = 'The mirror forwards this server\'s open ports: tcp ' . implode(' ', $ports['tcp']) . ', udp ' . implode(' ', $ports['udp']) . '. Download the script and run it on the mirror: <code>sudo bash socat.sh</code> (again after opening or closing a port in Settings -> Ports; <code>sudo bash socat.sh remove</code> removes it).';
+        $text[] = '';
+        $text[] = '• Add the mirror\'s IP to Settings -> IP ban -> ignorelist: all its clients come from that one IP, so the IP analysis could block the whole mirror, and the IP limit cannot tell its users apart.';
+        $text[] = '• Reality: in the client, put the mirror\'s IP as the server address, everything else stays.';
+        $text[] = '• WS / XHTTP need a domain of the mirror with a certificate: not supported.';
         $data[] = [
             [
                 'text'          => $this->i18n('download'),
@@ -3638,15 +3636,33 @@ DNS-over-HTTPS with IP:
         ];
     }
 
+    // ports the server publishes (docker-compose.yml and the port switches)
+    public function mirrorPorts(): array
+    {
+        $p   = $this->getPorts();
+        $tcp = ['80', '443'];
+        $udp = ['443'];
+        if (!empty($p['ad']['enable'])) {
+            $tcp[] = $p['ad']['port'];
+        }
+        if (!empty($p['dnstt']['enable'])) {
+            $udp[] = $p['dnstt']['port'];
+        }
+        return ['tcp' => $tcp, 'udp' => $udp];
+    }
+
     public function getMirror()
     {
-        $s = file_get_contents('/mirror/start_socat.sh');
-        $p = $this->getPorts();
-        $t = str_replace([
-            '~ip~',
-        ], [
-            $this->ip,
-        ], $s);
+        // socat targets an IPv4 address here
+        if (!filter_var($this->ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return $this->answer($this->input['callback_id'], 'the server IPv4 address is not known (IP in .env)', true);
+        }
+        $ports = $this->mirrorPorts();
+        $t     = str_replace(
+            ['~ip~', '~tcp~', '~udp~'],
+            [$this->ip, implode(' ', $ports['tcp']), implode(' ', $ports['udp'])],
+            file_get_contents('/mirror/start_socat.sh')
+        );
         $this->sendFile($this->input['from'], new CURLStringFile($t, 'socat.sh', 'application/x-sh'));
     }
 
