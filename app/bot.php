@@ -1621,7 +1621,7 @@ class Bot
         switch ($name) {
             case 'letsencrypt':
                 $out[] = 'Install certificate:';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
+                $this->update($this->input['chat'], $this->input['message_id'], htmlspecialchars(implode("\n", $out)));
                 $oc      = $this->getHashSubdomain('oc');
                 $domains = array_filter([
                     $conf['domain'],
@@ -1631,11 +1631,11 @@ class Bot
                 $args = implode(' ', array_map(fn($e) => '-d ' . escapeshellarg($e), $domains));
                 exec("certbot certonly --force-renew --preferred-chain 'ISRG Root X1' -n --agree-tos --email " . escapeshellarg("mail@{$conf['domain']}") . " $args --webroot -w /certs/ --logs-dir /logs --max-log-backups 0 2>&1", $out, $code);
                 if ($code > 0) {
-                    $this->send($this->input['chat'], "ERROR\n" . implode("\n", $out));
+                    $this->send($this->input['chat'], "ERROR\n" . htmlspecialchars(implode("\n", $out)));
                     break;
                 }
                 $out[] = 'Generate bundle';
-                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
+                $this->update($this->input['chat'], $this->input['message_id'], htmlspecialchars(implode("\n", $out)));
                 $bundle = file_get_contents("/etc/letsencrypt/live/{$conf['domain']}/privkey.pem") . file_get_contents("/etc/letsencrypt/live/{$conf['domain']}/fullchain.pem");
                 $conf['letsencrypt'] = 'letsencrypt';
                 break;
@@ -2503,7 +2503,7 @@ DNS-over-HTTPS with IP:
             $i = 0;
             foreach ($domains as $k => $v) {
                 if ($type == 'rulessetlist') {
-                    $text[] = "<blockquote><code>$k</code></blockquote>";
+                    $text[] = "<blockquote><code>" . htmlspecialchars((string) $k) . "</code></blockquote>";
                 }
                 $data[] = [
                     [
@@ -3222,7 +3222,7 @@ DNS-over-HTTPS with IP:
     {
         if (preg_match('~^\d+\.\d+\.\d+\.\d+$~D', $search)) {
             $info = file_get_contents("https://ipinfo.io/$search/json", context: stream_context_create(['http' => ['timeout' => 2]]));
-            $text = "$search\n<pre>$info</pre>";
+            $text = "$search\n<pre>" . htmlspecialchars((string) $info) . "</pre>";
             $data[] = [
                 [
                     'text'          => $this->i18n('block'),
@@ -3768,7 +3768,7 @@ DNS-over-HTTPS with IP:
         $text[] = "Menu -> OpenConnect";
         if (!empty($cs)) {
             $oc = $this->getHashSubdomain('oc');
-            $text[] = "<code>https://$oc.$domain/?$cs</code>";
+            $text[] = "<code>https://$oc.$domain/?" . htmlspecialchars((string) $cs) . "</code>";
         }
         $text[] = "password: <span class='tg-spoiler'>$pass</span>";
         $data[] = [
@@ -4591,7 +4591,7 @@ DNS-over-HTTPS with IP:
             $log .= "$label...";
             $this->sendDraft($chat, 1, $log);
             $out = trim($this->ssh($cmd, $container));
-            $log .= $out ? "\n$out\n" : " ok\n";
+            $log .= $out ? "\n" . htmlspecialchars($out) . "\n" : " ok\n";
             $this->sendDraft($chat, 1, $log);
             return empty($out); // true = success (no output = exit 0)
         };
@@ -4782,10 +4782,11 @@ DNS-over-HTTPS with IP:
         $c      = file_get_contents('/etc/warp/wgcf-profile.conf');
         $a      = file_get_contents('/etc/warp/wgcf-account.toml');
         $text[] = "Menu -> " . $this->i18n('warp');
-        $text[] = "status: <pre>" . $this->ssh('wgcf trace', 'wp') . '</pre>';
-        $text[] = "key: <code>{$p['warp']}</code>";
-        $text[] = "<pre>$a</pre>";
-        $text[] = "<pre>$c</pre>";
+        // command output and files go into an HTML message: escaped
+        $text[] = "status: <pre>" . htmlspecialchars((string) $this->ssh('wgcf trace', 'wp')) . '</pre>';
+        $text[] = "key: <code>" . htmlspecialchars((string) ($p['warp'] ?? '')) . "</code>";
+        $text[] = "<pre>" . htmlspecialchars((string) $a) . "</pre>";
+        $text[] = "<pre>" . htmlspecialchars((string) $c) . "</pre>";
         $data[] = [
             [
                 'text'          => 'warp+ / re-registration',
@@ -5882,7 +5883,7 @@ DNS-over-HTTPS with IP:
         $domain = $this->getDomain();
         $hash   = $this->getHashBot();
         $scheme = empty($ssl = $this->nginxGetTypeCert()) ? 'http' : 'https';
-        $text   = "$scheme://$domain/adguard$hash\nLogin: admin\nPass: <span class='tg-spoiler'>{$conf['adpswd']}</span>\n\n";
+        $text   = "$scheme://$domain/adguard$hash\nLogin: admin\nPass: <span class='tg-spoiler'>" . htmlspecialchars((string) ($conf['adpswd'] ?? '')) . "</span>\n\n";
         if ($ssl) {
             $text .= "DNS over HTTPS:\n<code>$ip</code>\n<code>$scheme://$domain/dns-query$hash" . (!empty($conf['adguardkey']) ? "/{$conf['adguardkey']}" : '') . "</code>\n\n";
             $text .= "DNS over TLS:\n<code>tls://" . (!empty($conf['adguardkey'] )? "{$conf['adguardkey']}." : '') . "$domain</code>";
@@ -5891,7 +5892,7 @@ DNS-over-HTTPS with IP:
         $safesearch = yaml_parse_file($this->adguard)['filtering']['safe_search']['enabled'];
         $text .= "\n\nstatus: $status\t\tsafesearch: " . $this->i18n($safesearch ? 'on' : 'off');
         $allowedClients = yaml_parse_file($this->adguard)['dns']['allowed_clients'];
-        $text .= $allowedClients ? "\n\nallowed clients: \n - " . implode("\n - ", $allowedClients) : '';
+        $text .= $allowedClients ? "\n\nallowed clients: \n - " . htmlspecialchars(implode("\n - ", $allowedClients)) : '';
 
         $data = [
             [
