@@ -1,6 +1,6 @@
 # lightweightbot
 
-Telegram-бот для своего VPN-сервера: облегчённая версия [mercurykd/vpnbot](https://github.com/mercurykd/vpnbot). Версия — в файле `VERSION` и в главном меню бота.
+Telegram-бот для своего VPN-сервера: облегчённая версия [mercurykd/vpnbot](https://github.com/mercurykd/vpnbot).
 
 ## Протоколы
 
@@ -108,6 +108,6 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 
 Кнопка **update bot** (бот сам сообщает о новых коммитах). Вручную: `cd /root/vpnbot && git pull && make r`.
 
-Обновления безопасности базовых образов (Alpine) — пересборкой: `docker compose build --no-cache && make r`.
+Обновления базовых образов (Alpine) — пересборкой: `docker compose build --no-cache && make r`.
 
 Версия Xray: по умолчанию последний стабильный релиз (`XRAY_VERSION=latest` в `.env`); закрепить — например `XRAY_VERSION=v26.3.27`.
