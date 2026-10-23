@@ -116,6 +116,6 @@ done
 
 echo
 echo "forwarding to $TARGET (IPv$FAMILY): tcp $TCP_PORTS${UDP_PORTS:+, udp $UDP_PORTS}"
-echo "in the bot, add this mirror's IP to Settings -> IP ban -> ignorelist"
+echo "in the bot: /mirror -> bridge IP: this server's IP (turns the IP limit off, adds the IP to the ignorelist)"
 echo "remove: sudo bash $0 remove"
 exit $failed
