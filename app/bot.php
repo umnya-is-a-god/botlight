@@ -1850,9 +1850,15 @@ class Bot
     }
 
     public function setPage($text) {
+        if (!preg_match('~^\d{1,3}$~D', $text = trim((string) $text)) || $text < 1 || $text > 100) {
+            $this->send($this->input['chat'], 'wrong number: 1-100');
+            return;
+        }
         $c = $this->getPacConf();
         $c['limitpage'] = (int) $text;
         $this->setPacConf($c);
+        // the polling process keeps one Bot object: apply without a restart
+        $this->limit = $c['limitpage'];
         $this->menu('config');
     }
 
