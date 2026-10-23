@@ -567,6 +567,7 @@ class Bot
                     $p = $this->applyCounters($p, $cnt, $running);
                 }
                 $p = $this->sessionToGlobal($p);
+                unset($p['xray_uptime']);
                 if ($rename && isset($p['users'][$rename[0]])) {
                     $p['users'][$rename[1]] = $p['users'][$rename[0]];
                     unset($p['users'][$rename[0]]);
@@ -888,11 +889,28 @@ class Bot
                 if (($cnt = $this->xrayCounters()) === null) {
                     return $p; // Xray not running: keep the last values
                 }
+                // Xray restarted outside the bot (make r, reboot, update,
+                // crash): its counters began again from zero, so what it had
+                // counted before moves into the totals first. Told by its
+                // uptime going down (not by the clock, which may jump)
+                if (($uptime = $this->xrayUptime()) !== null) {
+                    if (isset($p['xray_uptime']) && $uptime < (int) $p['xray_uptime']) {
+                        $p = $this->sessionToGlobal($p);
+                    }
+                    $p['xray_uptime'] = $uptime;
+                }
                 $emails = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
                 return $this->applyCounters($p, $cnt, $emails);
             });
         } catch (\Throwable $th) {
         }
+    }
+
+    // seconds the running Xray has been up, null when it does not answer
+    public function xrayUptime(): ?int
+    {
+        $out = json_decode((string) $this->ssh('xray api statssys --server=127.0.0.1:8080 2>/dev/null', 'xr'), true);
+        return isset($out['Uptime']) ? (int) $out['Uptime'] : null;
     }
 
     // all counters of the running Xray by name, null when it does not answer
@@ -1452,7 +1470,11 @@ class Bot
             if (!empty($json['xraystats'])) {
                 $out[] = 'update xray stats';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->setXrayStats($json['xraystats']);
+                // Xray was restarted by this import: what the old process
+                // counted ("session") belongs to the totals now
+                $st = $this->sessionToGlobal((array) $json['xraystats']);
+                unset($st['xray_uptime']);
+                $this->setXrayStats($st);
             }
             // ocserv
             if (!empty($json['oc'])) {
@@ -5987,6 +6009,8 @@ DNS-over-HTTPS with IP:
 
     public function applyupdatebot()
     {
+        // the latest traffic into the backup: Xray stops for the update
+        $this->xrayStatsUser(true);
         $this->sendBackup($this->update);
         $r = $this->sendDraft($this->input['from'], 1, 'update...');
         file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
@@ -6002,6 +6026,7 @@ DNS-over-HTTPS with IP:
 
     public function restart()
     {
+        $this->xrayStatsUser(true);
         $r = $this->sendDraft($this->input['from'], 1, 'restart...');
         file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
         file_put_contents('/update/key', $this->key);
