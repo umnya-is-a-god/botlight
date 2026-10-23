@@ -609,9 +609,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter camouflage key",
+            "@{$this->input['username']} " . $this->i18n('enter camouflage key'),
             $this->input['message_id'],
-            reply: 'enter camouflage key',
+            reply: $this->i18n('enter camouflage key'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -625,9 +625,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter subdomain",
+            "@{$this->input['username']} " . $this->i18n('enter subdomain'),
             $this->input['message_id'],
-            reply: 'enter subdomain',
+            reply: $this->i18n('enter subdomain'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -642,9 +642,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter pass",
+            "@{$this->input['username']} " . $this->i18n('enter pass'),
             $this->input['message_id'],
-            reply: 'enter password',
+            reply: $this->i18n('enter password'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -658,9 +658,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter name",
+            "@{$this->input['username']} " . $this->i18n('enter name'),
             $this->input['message_id'],
-            reply: 'enter name',
+            reply: $this->i18n('enter name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -674,9 +674,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter name",
+            "@{$this->input['username']} " . $this->i18n('enter name'),
             $this->input['message_id'],
-            reply: 'enter name:uuid [,name:uuid]',
+            reply: $this->i18n('enter name:uuid [,name:uuid]'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -690,9 +690,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter name",
+            "@{$this->input['username']} " . $this->i18n('enter name'),
             $this->input['message_id'],
-            reply: 'enter password',
+            reply: $this->i18n('enter name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -706,9 +706,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} attach html",
+            "@{$this->input['username']} " . $this->i18n('attach html'),
             $this->input['message_id'],
-            reply: 'attach html',
+            reply: $this->i18n('attach html'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -823,9 +823,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send the export file:",
+            "@{$this->input['username']} " . $this->i18n('send the export file:'),
             $this->input['message_id'],
-            reply: 'send the export file:',
+            reply: $this->i18n('send the export file:'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -1211,9 +1211,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} backup password (8-128 characters; \"-\" removes it)",
+            "@{$this->input['username']} " . $this->i18n('prompt backup password'),
             $this->input['message_id'],
-            reply: 'backup password',
+            reply: $this->i18n('backup password'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -1276,7 +1276,7 @@ class Bot
                         $this->send($v, $title . "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits)), 0, [
                             [
                                 [
-                                    'text'          => 'changelog',
+                                    'text'          => $this->i18n('changelog'),
                                     'callback_data' => "/changelog",
                                 ],
                                 [
@@ -1381,9 +1381,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send the export file:",
+            "@{$this->input['username']} " . $this->i18n('send the export file:'),
             $this->input['message_id'],
-            reply: 'send the export file:',
+            reply: $this->i18n('send the export file:'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -1429,9 +1429,9 @@ class Bot
                 }
                 $r = $this->send(
                     $this->input['chat'],
-                    "@{$this->input['username']} backup password",
+                    "@{$this->input['username']} " . $this->i18n('backup password'),
                     $this->input['message_id'],
-                    reply: 'backup password',
+                    reply: $this->i18n('backup password'),
                 );
                 $_SESSION['reply'][$r['result']['message_id']] = [
                     'start_message'  => $this->input['message_id'],
@@ -1691,9 +1691,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter domain",
+            "@{$this->input['username']} " . $this->i18n('enter domain'),
             $this->input['message_id'],
-            reply: 'enter domain',
+            reply: $this->i18n('enter domain'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1706,9 +1706,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send file with your certificate chain and private key <code>cat key.pem ca.pem cert.pem</code>",
+            "@{$this->input['username']} " . $this->i18n('prompt selfssl'),
             $this->input['message_id'],
-            reply: 'send file with your certificate chain and private key',
+            reply: $this->i18n('send file with your certificate chain and private key'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1738,9 +1738,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter password",
+            "@{$this->input['username']} " . $this->i18n('enter password'),
             $this->input['message_id'],
-            reply: 'enter password',
+            reply: $this->i18n('enter password'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1753,9 +1753,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter key",
+            "@{$this->input['username']} " . $this->i18n('enter key'),
             $this->input['message_id'],
-            reply: 'enter key',
+            reply: $this->i18n('enter key'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1782,9 +1782,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter id",
+            "@{$this->input['username']} " . $this->i18n('enter id'),
             $this->input['message_id'],
-            reply: 'enter id',
+            reply: $this->i18n('enter id'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1797,9 +1797,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter seconds and count ip",
+            "@{$this->input['username']} " . $this->i18n('enter seconds and count ip'),
             $this->input['message_id'],
-            reply: 'enter seconds:count_ip',
+            reply: $this->i18n('enter seconds:count_ip'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1812,9 +1812,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter domain for link",
+            "@{$this->input['username']} " . $this->i18n('enter domain for link'),
             $this->input['message_id'],
-            reply: 'enter domain for link',
+            reply: $this->i18n('enter domain for link'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1844,9 +1844,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter limit on page",
+            "@{$this->input['username']} " . $this->i18n('enter limit on page'),
             $this->input['message_id'],
-            reply: 'enter limit on page',
+            reply: $this->i18n('enter limit on page'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1983,21 +1983,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter dns address
-Plain DNS:
-<code>example.org 94.140.14.14</code>
-DNS-over-TLS:
-<code>example.org tls://dns.adguard.com</code>
-DNS-over-TLS with IP:
-<code>example.org tls://dns.adguard.com 94.140.14.14</code>
-DNS-over-HTTPS with HTTP/2:
-<code>example.org https://dns.adguard.com/dns-query</code>
-DNS-over-HTTPS forcing HTTP/3 only:
-<code>example.org h3://dns.google/dns-query</code>
-DNS-over-HTTPS with IP:
-<code>example.org https://dns.adguard.com/dns-query 94.140.14.14</code>",
+            "@{$this->input['username']} " . $this->i18n('prompt checkdns'),
             $this->input['message_id'],
-            reply: 'enter command',
+            reply: $this->i18n('enter command'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -2022,9 +2010,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter address upstream",
+            "@{$this->input['username']} " . $this->i18n('enter address upstream'),
             $this->input['message_id'],
-            reply: 'enter address upstream',
+            reply: $this->i18n('ph: enter address upstream'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -2115,7 +2103,7 @@ DNS-over-HTTPS with IP:
             case 'rulessetlist':
                 $r = $this->send(
                     $this->input['chat'],
-                    "@{$this->input['username']} outbound[:behavior]:time:URL",
+                    "@{$this->input['username']} " . $this->i18n('prompt rulesset'),
                     $this->input['message_id'],
                     reply: 'outbound[:behavior]:time:URL',
                 );
@@ -2124,9 +2112,9 @@ DNS-over-HTTPS with IP:
             default:
                 $r = $this->send(
                     $this->input['chat'],
-                    "@{$this->input['username']} list separated by commas",
+                    "@{$this->input['username']} " . $this->i18n('list separated by commas'),
                     $this->input['message_id'],
-                    reply: 'list separated by commas',
+                    reply: $this->i18n('ph: list separated by commas'),
                 );
                 break;
         }
@@ -2316,7 +2304,7 @@ DNS-over-HTTPS with IP:
     public function pacMenu($page = 0)
     {
         // the domain list goes into the subscriptions (~pac~ in templates)
-        $text = 'Menu -> pac';
+        $text = $this->i18n('Menu') . ' -> pac';
         $data = $this->listPac('includelist', $page, 'pacMenu')[0];
         $data[] = [
             [
@@ -2370,7 +2358,7 @@ DNS-over-HTTPS with IP:
                 break;
         }
         $text   = <<<text
-                Menu -> $dir -> delete all
+                {$this->i18n('Menu')} -> $dir -> {$this->i18n('delete all')}
                 text;
         $data[] = [
             [
@@ -2441,7 +2429,7 @@ DNS-over-HTTPS with IP:
 
     public function xtlsblock($page = 0)
     {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> block list';
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> ' . $this->i18n('block list');
 
         [$data] = $this->listPac('blocklist', $page, 'xtlsblock');
         $data[] = [
@@ -2460,7 +2448,7 @@ DNS-over-HTTPS with IP:
 
     public function xtlswarp($page = 0)
     {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> warp list';
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> ' . $this->i18n('warp list');
 
         [$data] = $this->listPac('warplist', $page, 'xtlswarp');
         $data[] = [
@@ -2480,7 +2468,7 @@ DNS-over-HTTPS with IP:
 
     public function xtlsrulesset($page = 0)
     {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> rulesset list';
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n('routes') . ' -> ' . $this->i18n('rulesset list');
 
         [$data, $tmp] = $this->listPac('rulessetlist', $page, 'xtlsrulesset', 1);
         $text = array_merge($text, $tmp ?: []);
@@ -2523,7 +2511,7 @@ DNS-over-HTTPS with IP:
                         'callback_data' => "/change$type " . ($i + $page * $this->limit) . " $page",
                     ],
                     [
-                        'text'          => 'delete',
+                        'text'          => $this->i18n('delete'),
                         'callback_data' => "/delete$type " . ($i + $page * $this->limit) . " $page",
                     ],
                 ];
@@ -2639,9 +2627,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter domain",
+            "@{$this->input['username']} " . $this->i18n('enter domain'),
             $this->input['message_id'],
-            reply: 'enter domain',
+            reply: $this->i18n('enter domain'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -2654,9 +2642,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter password",
+            "@{$this->input['username']} " . $this->i18n('enter password'),
             $this->input['message_id'],
-            reply: 'enter password',
+            reply: $this->i18n('enter password'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -2946,7 +2934,7 @@ DNS-over-HTTPS with IP:
         if (empty($type) && $update) {
             array_unshift($data, [
                 [
-                    'text'          => 'changelog',
+                    'text'          => $this->i18n('changelog'),
                     'callback_data' => "/changelog",
                 ],
                 [
@@ -3026,7 +3014,7 @@ DNS-over-HTTPS with IP:
 
     public function ipMenu()
     {
-        $text   = 'Settings -> IP & Logs';
+        $text   = $this->i18n('config') . ' -> ' . $this->i18n('IP & Logs');
         $pac    = $this->getPacConf();
         $d      = count($pac['deny'] ?: []);
         $w      = count($pac['white'] ?: []);
@@ -3257,7 +3245,7 @@ DNS-over-HTTPS with IP:
             ];
             $data[] = [
                 [
-                    'text'          => $this->i18n("clean logs $search"),
+                    'text'          => $this->i18n('clean logs') . " $search",
                     'callback_data' => "/cleanLogs $search",
                 ],
             ];
@@ -3374,7 +3362,7 @@ DNS-over-HTTPS with IP:
 
     public function denyList($page = 0, $white = 0)
     {
-        $text    = 'Menu -> IP -> ' . ($white ? 'ignore' : 'block') . 'list';
+        $text    = $this->i18n('Menu') . ' -> IP -> ' . $this->i18n($white ? 'ignorelist' : 'blocklist');
         $domains = $this->getPacConf()[$white ? 'white' : 'deny'] ?: [];
         $all     = (int) ceil(count($domains) / $this->limit);
         $page    = min($page, $all - 1);
@@ -3656,7 +3644,7 @@ DNS-over-HTTPS with IP:
     {
         $ports  = $this->mirrorPorts();
         $bridge = $this->getPacConf()['bridge'] ?? '';
-        $text[] = "Menu -> Mirror";
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('Mirror');
         $text[] = "<pre>client -> mirror (another server) -> this server</pre>";
         $text[] = 'The mirror forwards this server\'s open ports: tcp ' . implode(' ', $ports['tcp']) . ', udp ' . implode(' ', $ports['udp']) . '. Download the script and run it on the mirror (again after opening or closing a port in Settings -> Ports):';
         $text[] = '<code>sudo bash socat.sh</code> — to this server over IPv4';
@@ -3673,7 +3661,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/getMirror",
             ],
             [
-                'text'          => 'bridge IP: ' . ($bridge !== '' ? $this->i18n('on') . " $bridge" : $this->i18n('off')),
+                'text'          => $this->i18n('bridge IP') . ': ' . ($bridge !== '' ? $this->i18n('on') . " $bridge" : $this->i18n('off')),
                 'callback_data' => "/setBridge",
             ],
         ];
@@ -3693,9 +3681,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} IP of the bridge (mirror) server, \"-\" removes it",
+            "@{$this->input['username']} " . $this->i18n('prompt bridge'),
             $this->input['message_id'],
-            reply: 'bridge IP',
+            reply: $this->i18n('bridge IP'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -3777,7 +3765,7 @@ DNS-over-HTTPS with IP:
         preg_match('~^camouflage_secret[^\n]+?"([^"]+)*"~sm', $ocserv, $m);
         $cs = $m[1];
         $pass   = htmlspecialchars((string) ($pac['ocserv'] ?? ''));
-        $text[] = "Menu -> OpenConnect";
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('ocserv');
         if (!empty($cs)) {
             $oc = $this->getHashSubdomain('oc');
             $text[] = "<code>https://$oc.$domain/?" . htmlspecialchars((string) $cs) . "</code>";
@@ -3838,7 +3826,7 @@ DNS-over-HTTPS with IP:
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
-            'Menu -> OpenConnect -> ' . htmlspecialchars($clients[$i]),
+            $this->i18n('Menu') . ' -> ' . $this->i18n('ocserv') . ' -> ' . htmlspecialchars($clients[$i]),
             [
                 [
                     [
@@ -3860,9 +3848,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter name",
+            "@{$this->input['username']} " . $this->i18n('enter name'),
             $this->input['message_id'],
-            reply: 'enter name',
+            reply: $this->i18n('enter name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4068,9 +4056,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send the template file:",
+            "@{$this->input['username']} " . $this->i18n('send the template file:'),
             $this->input['message_id'],
-            reply: 'send the template file:',
+            reply: $this->i18n('send the template file:'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4084,9 +4072,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send time like 1 hour or 1 day etc",
+            "@{$this->input['username']} " . $this->i18n('send time like 1 hour or 1 day etc'),
             $this->input['message_id'],
-            reply: 'send time like 1 hour or 1 day etc',
+            reply: $this->i18n('ph: send time like 1 hour or 1 day etc'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4116,9 +4104,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send the template name",
+            "@{$this->input['username']} " . $this->i18n('send the template name'),
             $this->input['message_id'],
-            reply: 'send the template name',
+            reply: $this->i18n('send the template name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4240,7 +4228,7 @@ DNS-over-HTTPS with IP:
         $pac    = $this->getPacConf();
         $domain = $this->getDomain();
         $hash   = $this->getHashBot();
-        $text[] = "Menu -> " . $this->i18n('xray') . " -> " . $this->i18n($type) . " templates";
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n("$type templates");
         $text[] = <<<TEXT
             <code>~outbound~</code>
             <code>~pac~</code>
@@ -4268,7 +4256,7 @@ DNS-over-HTTPS with IP:
         ];
         $data[] = [
             [
-                'text'          => "origin",
+                'text'          => $this->i18n('origin'),
                 'web_app' => ['url' => "https://$domain/pac$hash?t=te&ty=$type"],
             ],
             [
@@ -4323,9 +4311,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} send name",
+            "@{$this->input['username']} " . $this->i18n('send name'),
             $this->input['message_id'],
-            reply: 'send name',
+            reply: $this->i18n('ph: send name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4370,7 +4358,7 @@ DNS-over-HTTPS with IP:
     {
         $c      = $this->getXray();
         $p      = $this->getPacConf();
-        $text[] = "Menu -> " . $this->i18n('xray');
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray');
         if (!empty($c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0])) {
             $text[] = "fake domain: <code>{$c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]}</code>";
         }
@@ -4522,7 +4510,7 @@ DNS-over-HTTPS with IP:
 
     public function routes()
     {
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> routes';
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n('routes');
 
         $data = [
             [[
@@ -4561,12 +4549,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} WARP gets a new account and keys (WARP is down for a few seconds). Send:\n"
-                . "• a WARP+ license key: WARP+ with this key\n"
-                . "• <code>+</code>: keep the current WARP+ key (without a key: plain WARP)\n"
-                . "• <code>-</code>: remove the WARP+ key, plain WARP",
+            "@{$this->input['username']} " . $this->i18n('prompt warp'),
             $this->input['message_id'],
-            reply: 'enter key',
+            reply: $this->i18n('enter key'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -4793,7 +4778,7 @@ DNS-over-HTTPS with IP:
         $p      = $this->getPacConf();
         $c      = file_get_contents('/etc/warp/wgcf-profile.conf');
         $a      = file_get_contents('/etc/warp/wgcf-account.toml');
-        $text[] = "Menu -> " . $this->i18n('warp');
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('warp');
         // command output and files go into an HTML message: escaped
         $text[] = "status: <pre>" . htmlspecialchars((string) $this->ssh('wgcf trace', 'wp')) . '</pre>';
         $text[] = "key: <code>" . htmlspecialchars((string) ($p['warp'] ?? '')) . "</code>";
@@ -4801,7 +4786,7 @@ DNS-over-HTTPS with IP:
         $text[] = "<pre>" . htmlspecialchars((string) $c) . "</pre>";
         $data[] = [
             [
-                'text'          => 'warp+ / re-registration',
+                'text'          => $this->i18n('warp+ / re-registration'),
                 'callback_data' => "/warpPlus",
             ],
         ];
@@ -4836,17 +4821,17 @@ DNS-over-HTTPS with IP:
     {
         $c         = $this->getXray();
         $pac       = $this->getPacConf();
-        $text[]    = "Menu -> " . $this->i18n('xray') . " -> {$c['inbounds'][0]['settings']['clients'][$i]['email']}\n";
+        $text[]    = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . " -> {$c['inbounds'][0]['settings']['clients'][$i]['email']}\n";
         $templates = $pac["{$type}templates"];
         $data[]    = [
             [
-                'text'          => 'default',
+                'text'          => $this->i18n('default'),
                 'callback_data' => "/choiceTemplate {$type}_$i",
             ],
         ];
         $data[] = [
             [
-                'text'          => 'origin',
+                'text'          => $this->i18n('origin'),
                 'callback_data' => "/choiceTemplate {$type}_{$i}_" . base64_encode('origin'),
             ],
         ];
@@ -4886,7 +4871,7 @@ DNS-over-HTTPS with IP:
         $hash   = $this->getHashBot();
 
         $name   = rawurlencode((string) ($c['email'] ?? ''));
-        $text[] = "Menu -> " . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? ''));
+        $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? ''));
         if (file_exists(__DIR__ . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
@@ -4935,8 +4920,8 @@ DNS-over-HTTPS with IP:
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=cl&s={$c['id']}"]
             ],
         ]));
-        $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : 'default(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : 'origin') . ')';
-        $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : 'default(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : 'origin') . ')';
+        $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : $this->i18n('default') . '(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : $this->i18n('origin')) . ')';
+        $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : $this->i18n('default') . '(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : $this->i18n('origin')) . ')';
         $data[]        = array_values(array_filter([
             $sing ? [
                 'text'          => $this->i18n('singbox') . ": $singtemplate",
@@ -4962,7 +4947,7 @@ DNS-over-HTTPS with IP:
             ],
             [
                 // the user's state, pressing it switches the user on/off
-                'text'          => $this->i18n($c['off'] ? 'off' : 'on') . ($c['off'] ? ' off' : ' on'),
+                'text'          => $this->i18n($c['off'] ? 'off' : 'on') . ' ' . $this->i18n($c['off'] ? 'state off' : 'state on'),
                 'callback_data' => "/switchXr $i",
             ],
             [
@@ -5379,7 +5364,7 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...): replaces the current one, the profile is named MYrouting; \"-\" removes it",
+            "@{$this->input['username']} " . $this->i18n('prompt happ routing'),
             $this->input['message_id'],
             reply: 'happ://routing/onadd/...',
         );
@@ -5909,7 +5894,7 @@ DNS-over-HTTPS with IP:
         $data = [
             [
                 [
-                    'text'          => 'web panel',
+                    'text'          => $this->i18n('web panel'),
                     'web_app' => [
                         "url" => "https://$domain/adguard$hash"
                     ],
@@ -6035,7 +6020,7 @@ DNS-over-HTTPS with IP:
             ],
         ];
         return [
-            'text' => 'Language',
+            'text' => $this->i18n('Language'),
             'data' => $data,
         ];
     }
@@ -6118,7 +6103,7 @@ DNS-over-HTTPS with IP:
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
-            "Menu -> Settings -> rebuild images\n\n"
+            $this->i18n('Menu') . ' -> ' . $this->i18n('config') . ' -> ' . $this->i18n('rebuild images') . "\n\n"
             . "Every image is built anew, one at a time: fresh base images (Alpine, AdGuard Home) and package updates (PHP, OpenSSL, certificates). "
             . "All containers are stopped first: the bot and the VPN are off until the build ends, several minutes or more. "
             . "Settings and data are kept; a backup is sent first. The new images need free disk space.",
@@ -6335,7 +6320,7 @@ DNS-over-HTTPS with IP:
 
     public function ports()
     {
-        $text[] = 'Settings -> Ports';
+        $text[] = $this->i18n('config') . ' -> ' . $this->i18n('Ports');
         $c      = $this->portSwitches();
         $pac    = $this->getPacConf();
         $data   = [
@@ -6401,7 +6386,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/menu update",
             ]
         ];
-        $this->update($this->input['from'], $this->input['message_id'], 'branches', $data);
+        $this->update($this->input['from'], $this->input['message_id'], $this->i18n('manage updates'), $data);
     }
 
     public function changeBranch($i)
@@ -6564,9 +6549,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter like: start / period",
+            "@{$this->input['username']} " . $this->i18n('enter like: start / period'),
             $this->input['message_id'],
-            reply: 'enter like: now / 12 hours',
+            reply: $this->i18n('enter like: now / 12 hours'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -6580,9 +6565,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter like: start / period",
+            "@{$this->input['username']} " . $this->i18n('enter like: start / period'),
             $this->input['message_id'],
-            reply: 'enter like: now / 12 hours',
+            reply: $this->i18n('enter like: now / 12 hours'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
@@ -6596,9 +6581,9 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} enter domain",
+            "@{$this->input['username']} " . $this->i18n('enter domain'),
             $this->input['message_id'],
-            reply: 'enter domain',
+            reply: $this->i18n('enter domain'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message'  => $this->input['message_id'],
