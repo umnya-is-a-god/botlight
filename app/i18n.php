@@ -197,6 +197,10 @@ $i = [
         'en' => 'restart',
         'ru' => 'перезагрузка',
     ],
+    'manage updates'  => [
+        'en' => 'manage updates',
+        'ru' => 'обновления',
+    ],
     'rebuild images'  => [
         'en' => 'rebuild images',
         'ru' => 'пересобрать образы',

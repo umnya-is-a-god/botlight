@@ -6292,15 +6292,13 @@ DNS-over-HTTPS with IP:
         ]));
         $data[] = [
             [
-                'text'          => $this->i18n('branches'),
+                'text'          => $this->i18n('manage updates'),
                 'callback_data' => "/menu update",
             ],
             [
                 'text'          => $this->i18n('restart'),
                 'callback_data' => "/restart",
             ],
-        ];
-        $data[] = [
             [
                 'text'          => $this->i18n('rebuild images'),
                 'callback_data' => "/rebuild",
