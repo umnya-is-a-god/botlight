@@ -5296,7 +5296,8 @@ class Bot
         }
 
         header('Content-type: application/json');
-        echo json_encode($c);
+        // readable when the link is opened in a browser; apps do not care
+        echo json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     /**
