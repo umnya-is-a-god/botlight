@@ -1,6 +1,8 @@
 # sshd for every container. The bot (php/service) logs in as root with
 # its key to run commands; nothing else needs a shell or forwarding.
-AuthorizedKeysFile	.ssh/authorized_keys
+# the bot's public key, read on every login: php makes a new key on each
+# start, and a copy taken at this container's start would go stale
+AuthorizedKeysFile	/ssh/key.pub
 HostKeyAlgorithms +ssh-rsa
 PubkeyAcceptedKeyTypes +ssh-rsa
 LogLevel QUIET
@@ -26,6 +28,7 @@ Subsystem	sftp	internal-sftp
 # (scripts/start_dnstt.sh).
 Match User vpnbot
 	PasswordAuthentication yes
+	AuthorizedKeysFile none
 	AllowTcpForwarding local
 	PermitOpen any
 	ForceCommand /usr/bin/tail -f /dev/null

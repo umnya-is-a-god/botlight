@@ -1,5 +1,4 @@
 #!/bin/sh
-cat /ssh/key.pub > /root/.ssh/authorized_keys
 ssh-keygen -A
 
 # Tunnel users (vpnbot) reach the internet only: no internal networks,

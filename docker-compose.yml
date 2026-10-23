@@ -201,6 +201,7 @@ services:
             - ./config/:/config/
             - ./certs/:/certs/
             - ./ssh:/ssh:ro
+            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./app:/app
             - ./logs/:/logs/
             - ./update:/update
