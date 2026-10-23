@@ -2667,7 +2667,7 @@ DNS-over-HTTPS with IP:
         }
         $this->setPacConf($c);
         $this->dnsttStart();
-        $this->dnstt();
+        $this->dnstt(true); // edits the DNSTT menu message
     }
 
     public function setdnsttDomain($text)
@@ -2684,7 +2684,7 @@ DNS-over-HTTPS with IP:
         }
         $this->setPacConf($c);
         $this->dnsttStart();
-        $this->dnstt();
+        $this->dnstt(true); // edits the DNSTT menu message
     }
 
     public function dnsttStart()
