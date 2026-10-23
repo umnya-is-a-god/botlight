@@ -16,6 +16,10 @@ start: # запуск контейнеров
 	@# drop superseded builds of the botlight images (quiet)
 	-@docker image prune -f > /dev/null
 u: preup start
+rebuild: # пересборка образов заново, по одному: свежие базовые образы и пакеты (S=сервис — только его)
+	for s in $(or $(S),ng php ad xr oc wp dnstt); do \
+		VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || exit 1; \
+	done
 d: # остановка контейнеров
 	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null
 	docker compose down --remove-orphans

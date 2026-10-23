@@ -197,6 +197,10 @@ $i = [
         'en' => 'restart',
         'ru' => 'перезагрузка',
     ],
+    'rebuild images'  => [
+        'en' => 'rebuild images',
+        'ru' => 'пересобрать образы',
+    ],
 ];
 
 if (file_exists(__DIR__ . '/i18n.override.php')) {

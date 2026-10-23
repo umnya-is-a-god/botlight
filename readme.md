@@ -90,6 +90,7 @@ Telegram-бот для своего VPN-сервера: облегчённая �
 * **auto backup** — `начало / период`, например `now / 1 day`; **auto update** — обновляться самому.
 * **fake html** — страница-заглушка на корне сайта (.html до 1 МБ).
 * **branches** — ветка, changelog, **update bot**; **restart** — перезапуск.
+* **rebuild images** — пересобрать все образы заново: свежие базовые образы (Alpine, AdGuard Home) и обновления пакетов (PHP, OpenSSL, сертификаты). Контейнеры останавливаются, бот и VPN недоступны на время сборки; образы собираются по одному, итог приходит сообщением.
 * **add admin** / **delete <id>** — админы (последнего удалить нельзя).
 
 ### Команды
@@ -109,7 +110,7 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 
 Кнопка **update bot** (бот сам сообщает о новых коммитах). Вручную: `cd /root/vpnbot && git pull && make r`.
 
-Обновления базовых образов (Alpine) — пересборкой: `docker compose build --no-cache && make r`.
+Обновления безопасности внутри контейнеров (Alpine, PHP, сертификаты, AdGuard Home) приходят только с пересборкой образов: кнопка **rebuild images** или вручную `cd /root/vpnbot && make d && make rebuild && make u` (`make rebuild S=ad` — только один сервис). Обновление пакетов на хосте (`apt`) их не затрагивает.
 
 Версия Xray: по умолчанию последний стабильный релиз (`XRAY_VERSION=latest` в `.env`); закрепить — например `XRAY_VERSION=v26.3.27`.
 

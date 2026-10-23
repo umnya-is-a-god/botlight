@@ -262,6 +262,12 @@ class Bot
             case preg_match('~^/restart$~', $this->input['callback'], $m):
                 $this->restart();
                 break;
+            case preg_match('~^/rebuild$~', $this->input['callback'], $m):
+                $this->rebuildMenu();
+                break;
+            case preg_match('~^/rebuildYes$~', $this->input['callback'], $m):
+                $this->rebuild();
+                break;
             case preg_match('~^/branches$~', $this->input['callback'], $m):
                 $this->branches();
                 break;
@@ -6104,7 +6110,36 @@ DNS-over-HTTPS with IP:
     public function restart()
     {
         $this->xrayStatsUser(true);
-        $r = $this->sendDraft($this->input['from'], 1, 'restart...');
+        $this->hostCommand('2', 'restart...');
+    }
+
+    public function rebuildMenu()
+    {
+        $this->update(
+            $this->input['chat'],
+            $this->input['message_id'],
+            "Menu -> Settings -> rebuild images\n\n"
+            . "Every image is built anew, one at a time: fresh base images (Alpine, AdGuard Home) and package updates (PHP, OpenSSL, certificates). "
+            . "All containers are stopped first: the bot and the VPN are off until the build ends, several minutes or more. "
+            . "Settings and data are kept; a backup is sent first. The new images need free disk space.",
+            [
+                [['text' => $this->i18n('rebuild images'), 'callback_data' => '/rebuildYes']],
+                [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
+            ],
+        );
+    }
+
+    public function rebuild()
+    {
+        $this->xrayStatsUser(true);
+        $this->sendBackup();
+        $this->hostCommand('3', 'rebuild images...');
+    }
+
+    // hands a command to scripts/update.sh on the host: 2 restart, 3 rebuild images
+    public function hostCommand($cmd, $draft)
+    {
+        $r = $this->sendDraft($this->input['from'], 1, $draft);
         file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
         file_put_contents('/update/key', $this->key);
         file_put_contents('/update/curl', json_encode([
@@ -6112,7 +6147,7 @@ DNS-over-HTTPS with IP:
             'message_id' => $r['result']['message_id'],
             'text'       => '~t~'
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        file_put_contents('/update/pipe', '2');
+        file_put_contents('/update/pipe', $cmd);
         $this->delete($this->input['from'], $this->input['message_id']);
     }
 
@@ -6263,6 +6298,12 @@ DNS-over-HTTPS with IP:
             [
                 'text'          => $this->i18n('restart'),
                 'callback_data' => "/restart",
+            ],
+        ];
+        $data[] = [
+            [
+                'text'          => $this->i18n('rebuild images'),
+                'callback_data' => "/rebuild",
             ],
         ];
         $data[] = [

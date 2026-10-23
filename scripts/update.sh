@@ -69,6 +69,31 @@ do
             git pull > ./update/message
         fi
 
+        report=""
+        if [[ "$cmd" == "3" ]]
+        then
+            # every image built anew, one at a time (low memory, the
+            # containers are stopped): fresh base images and packages. A
+            # failed build keeps the image it had. The log is kept outside
+            # ./update, which the containers can write to.
+            : > "$pwd/.rebuild.log"
+            services=(ng php ad xr oc wp dnstt)
+            i=0
+            for s in "${services[@]}"; do
+                i=$((i + 1))
+                tg_draft "building $s ($i/${#services[@]})"
+                if make -s rebuild S=$s >> "$pwd/.rebuild.log" 2>&1; then
+                    report="$report$s ok\\n"
+                else
+                    report="$report$s FAILED\\n"
+                fi
+            done
+            report="\\n\\nimages:\\n$report"
+            case "$report" in
+                *FAILED*) report="${report}log: .rebuild.log in the bot folder" ;;
+            esac
+        fi
+
         tg_draft "launching the bot"
         make start
 
@@ -77,7 +102,7 @@ do
 
         curl -s -H "Content-Type: application/json" \
             -X POST "https://$TELEGRAM_API/bot$_key/sendMessage" \
-            -d "{\"chat_id\":$_chat_id,\"text\":\"bot started\"}" > /dev/null
+            -d "{\"chat_id\":$_chat_id,\"text\":\"bot started$report\"}" > /dev/null
 
         bash $pwd/scripts/update.sh &
         exit 0
