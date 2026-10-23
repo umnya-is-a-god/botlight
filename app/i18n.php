@@ -591,6 +591,26 @@ DNS-over-HTTPS с IP:
         'en' => 'off',
         'ru' => 'выкл',
     ],
+    'enter id / name'  => [
+        'en' => 'enter id / name, like <code>123456789 / Pete</code>',
+        'ru' => 'id / имя, например <code>123456789 / Петя</code>',
+    ],
+    'ph: enter id / name'  => [
+        'en' => 'id / name',
+        'ru' => 'id / имя',
+    ],
+    'admin card'  => [
+        'en' => 'admin',
+        'ru' => 'админ',
+    ],
+    'name'  => [
+        'en' => 'name',
+        'ru' => 'имя',
+    ],
+    'main admin: cannot be removed'  => [
+        'en' => 'main admin: cannot be removed',
+        'ru' => 'главный админ: удалить нельзя',
+    ],
 ];
 
 if (file_exists(__DIR__ . '/i18n.override.php')) {

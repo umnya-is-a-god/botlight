@@ -110,6 +110,11 @@ class Bot
                 return;
             }
             $c['admin'] = [$from];
+            // the name from the Telegram profile, shown in Settings
+            $first = trim((string) ($this->input_raw['message']['from']['first_name'] ?? ''));
+            if ($this->validName($first)) {
+                $c['admin_names'][$from] = $first;
+            }
             file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
         } elseif (!is_array($c['admin'])) {
             $c['admin'] = [$c['admin']];
@@ -393,6 +398,12 @@ class Bot
                 break;
             case preg_match('~^/deladmin (\d+)$~', $this->input['callback'], $m):
                 $this->delAdmin($m[1]);
+                break;
+            case preg_match('~^/adminCard (\d+)$~', $this->input['callback'], $m):
+                $this->adminCard($m[1]);
+                break;
+            case preg_match('~^/renameAdmin (\d+)$~', $this->input['callback'], $m):
+                $this->renameAdmin($m[1]);
                 break;
             case preg_match('~^/qrXray (\d+)(?:_(\d+))?$~', $this->input['callback'], $m):
                 $this->qrXray($m[1], $m[2] ?: false);
@@ -1809,9 +1820,9 @@ class Bot
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter id'),
+            "@{$this->input['username']} " . $this->i18n('enter id / name'),
             $this->input['message_id'],
-            reply: $this->i18n('enter id'),
+            reply: $this->i18n('ph: enter id / name'),
         );
         $_SESSION['reply'][$r['result']['message_id']] = [
             'start_message' => $this->input['message_id'],
@@ -1895,36 +1906,125 @@ class Bot
         $this->menu('config');
     }
 
-    public function addAdmin($id)
+    // admins and their names live in config.php ($c['admin'], $c['admin_names'])
+    public function adminConfig(): array
     {
-        // a Telegram user id: digits only
-        if (!preg_match('~^\d{1,20}$~D', $id = trim((string) $id))) {
-            $this->send($this->input['chat'], 'wrong id: digits only');
+        $file = __DIR__ . '/config.php';
+        opcache_invalidate($file);
+        require $file;
+        $c['admin']       = array_values(array_map('intval', (array) ($c['admin'] ?? [])));
+        $c['admin_names'] = (array) ($c['admin_names'] ?? []);
+        return $c;
+    }
+
+    public function saveAdminConfig(array $c)
+    {
+        $file = __DIR__ . '/config.php';
+        file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+        opcache_invalidate($file);
+    }
+
+    // the name; the id until a name is set (admins added before names)
+    public function adminLabel(array $c, int $id): string
+    {
+        $name = (string) ($c['admin_names'][$id] ?? '');
+        return $name !== '' ? $name : (string) $id;
+    }
+
+    // "id / name": a Telegram user id (digits) and a name
+    public function addAdmin($text)
+    {
+        if (!preg_match('~^\s*(\d{1,20})\s*/\s*(.+?)\s*$~uD', (string) $text, $m) || !$this->validName($m[2])) {
+            $this->send($this->input['chat'], 'wrong format: id / name, like 123456789 / Pete (name: letters, digits, emoji, space . _ @ -)');
             return;
         }
-        $file = __DIR__ . '/config.php';
-        require $file;
-        if (!in_array((int) $id, array_map('intval', $c['admin'] ?? []), true)) {
-            $c['admin'][] = (int) $id;
+        $c = $this->adminConfig();
+        if (!in_array((int) $m[1], $c['admin'], true)) {
+            $c['admin'][] = (int) $m[1];
         }
-        file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+        $c['admin_names'][(int) $m[1]] = $m[2];
+        $this->saveAdminConfig($c);
         $this->menu('config');
+    }
+
+    public function adminCard($id)
+    {
+        $c = $this->adminConfig();
+        $k = array_search((int) $id, $c['admin'], true);
+        if ($k === false) {
+            return $this->menu('config');
+        }
+        $text   = $this->i18n('Menu') . ' -> ' . $this->i18n('config') . ' -> ' . $this->i18n('admin card');
+        $text  .= "\nid: <code>$id</code>";
+        $text  .= "\n" . $this->i18n('name') . ': ' . htmlspecialchars((string) ($c['admin_names'][(int) $id] ?? '—'));
+        if ($k === 0) {
+            $text .= "\n👑 " . $this->i18n('main admin: cannot be removed');
+        }
+        $row = [[
+            'text'          => $this->i18n('rename'),
+            'callback_data' => "/renameAdmin $id",
+        ]];
+        // the main admin (the first one, who started the bot) stays
+        if ($k !== 0) {
+            $row[] = [
+                'text'          => $this->i18n('delete'),
+                'callback_data' => "/deladmin $id",
+            ];
+        }
+        $this->update($this->input['chat'], $this->input['message_id'], $text, [
+            $row,
+            [[
+                'text'          => $this->i18n('back'),
+                'callback_data' => '/menu config',
+            ]],
+        ]);
+    }
+
+    public function renameAdmin($id)
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} " . $this->i18n('enter name'),
+            $this->input['message_id'],
+            reply: $this->i18n('enter name'),
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => 'setAdminName',
+            'args'           => [(int) $id],
+        ];
+    }
+
+    public function setAdminName($name, $id)
+    {
+        $c = $this->adminConfig();
+        if (!in_array((int) $id, $c['admin'], true)) {
+            return $this->menu('config');
+        }
+        if (!$this->validName($name = trim((string) $name))) {
+            $this->send($this->input['chat'], 'wrong name: letters, digits, emoji, space . _ @ -');
+            return $this->adminCard($id);
+        }
+        $c['admin_names'][(int) $id] = $name;
+        $this->saveAdminConfig($c);
+        $this->adminCard($id);
     }
 
     public function delAdmin($id)
     {
-        $file = __DIR__ . '/config.php';
-        require $file;
-        $k = array_search((int) $id, array_map('intval', $c['admin'] ?? []), true);
-        // never the last admin: with none left the next person to write to
-        // the bot would become admin
-        if ($k === false || count($c['admin']) < 2) {
-            $this->answer($this->input['callback_id'], $k === false ? 'no such admin' : 'the last admin cannot be removed', true);
+        $c = $this->adminConfig();
+        $k = array_search((int) $id, $c['admin'], true);
+        // never the main admin (the first one): the bot always keeps an
+        // admin, with none left the next person to write to it would become
+        // admin
+        if ($k === false || $k === 0) {
+            $this->answer($this->input['callback_id'], $k === false ? 'no such admin' : 'the main admin cannot be removed', true);
             return;
         }
-        unset($c['admin'][$k]);
+        unset($c['admin'][$k], $c['admin_names'][(int) $id]);
         $c['admin'] = array_values($c['admin']);
-        file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+        $this->saveAdminConfig($c);
         $this->menu('config');
     }
 
@@ -6323,14 +6423,12 @@ class Bot
                 'callback_data' => "/addadmin",
             ],
         ];
-        $file = __DIR__ . '/config.php';
-        opcache_invalidate($file);
-        require $file;
-        foreach ($c['admin'] as $k => $v) {
+        $admins = $this->adminConfig();
+        foreach ($admins['admin'] as $k => $v) {
             $data[] = [
                 [
-                    'text'          => $this->i18n('delete') . " $v",
-                    'callback_data' => "/deladmin $v",
+                    'text'          => ($k === 0 ? '👑 ' : '') . $this->adminLabel($admins, $v),
+                    'callback_data' => "/adminCard $v",
                 ],
             ];
         }
