@@ -4418,7 +4418,7 @@ DNS-over-HTTPS with IP:
                 'callback_data' => "/xtlsrulesset",
             ]],
             [[
-                'text'          => $this->i18n('happ routing') . ': ' . (!empty($this->getPacConf()['happrouting']) ? 'originRU' : $this->i18n('off')),
+                'text'          => $this->i18n('happ routing') . ': ' . (!empty($this->getPacConf()['happrouting']) ? 'MYrouting' : $this->i18n('off')),
                 'callback_data' => '/happRouting',
             ]],
         ];
@@ -5240,7 +5240,7 @@ DNS-over-HTTPS with IP:
 
     /**
      * The routing link as Happ gets it: the profile is always named
-     * "originRU", so a new link replaces the same profile in Happ (Happ
+     * "MYrouting", so a new link replaces the same profile in Happ (Happ
      * overwrites a profile with the same name) instead of adding another.
      */
     public function happRoutingLink($link): string
@@ -5250,7 +5250,7 @@ DNS-over-HTTPS with IP:
         }
         preg_match('~^happ://routing/((?:on)?add)/(.+)$~D', $link, $m);
         $json = json_decode(base64_decode(strtr($m[2], '-_', '+/')), true);
-        $json['Name'] = 'originRU';
+        $json['Name'] = 'MYrouting';
         return "happ://routing/{$m[1]}/" . base64_encode(json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
@@ -5258,7 +5258,7 @@ DNS-over-HTTPS with IP:
     {
         $r = $this->send(
             $this->input['chat'],
-            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...): replaces the current one, the profile is named originRU; \"-\" removes it",
+            "@{$this->input['username']} Happ routing link (happ://routing/onadd/...): replaces the current one, the profile is named MYrouting; \"-\" removes it",
             $this->input['message_id'],
             reply: 'happ://routing/onadd/...',
         );
