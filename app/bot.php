@@ -2,6 +2,11 @@
 
 class Bot
 {
+    // nginx in ng and up runs with the config the bot writes into /data
+    // (mounted as /etc/nginx/bot): every nginx call names it
+    const NGINX_NG = 'nginx -c /etc/nginx/bot/nginx.conf';
+    const NGINX_UP = 'nginx -c /etc/nginx/bot/upstream.conf';
+
     public $input;
     public $adguard;
     public $update;
@@ -36,14 +41,14 @@ class Bot
         $this->key      = $key;
         $this->api      = "https://$api/bot$key/";
         $this->file     = "https://$api/file/bot$key/";
-        $this->pac      = '/config/pac.json';
+        $this->pac      = BOT_DATA . '/pac.json';
         $this->ip       = filter_var(getenv('IP'), FILTER_VALIDATE_IP) ?: '';
         $this->i18n     = $i18n;
         $this->language = $this->getPacConf()['language'] ?: 'en';
         $this->dns      = '1.1.1.1, 8.8.8.8';
         $this->mtu      = 1350;
         $this->limit    = $this->getPacConf()['limitpage'] ?: 5;
-        $this->adguard  = '/config/AdGuardHome.yaml';
+        $this->adguard  = BOT_DATA . '/adguard/AdGuardHome.yaml';
         $this->update   = '/update/json';
         $this->logs = [
             'nginx_default_access',
@@ -60,6 +65,12 @@ class Bot
             'ad'    => '853',
             'dnstt' => '53/udp',
         ];
+    }
+
+    // config.php ($c: bot token, admins), see bot_config()
+    public function config(): array
+    {
+        return bot_config();
     }
 
     public function input($data = false)
@@ -99,8 +110,14 @@ class Bot
 
     public function auth()
     {
-        $file = __DIR__ . '/config.php';
-        require $file;
+        try {
+            $c = $this->config();
+        } catch (Throwable $e) {
+            // unreadable or damaged config.php: nobody is admin, and nobody
+            // becomes the first admin over a config that is still there
+            error_log("auth: $e");
+            return;
+        }
         $from = is_int($this->input['from']) ? $this->input['from'] : 0;
         if (empty($c['admin'])) {
             // the first admin is whoever writes to the bot first, and only
@@ -115,10 +132,10 @@ class Bot
             if ($this->validName($first)) {
                 $c['admin_names'][$from] = $first;
             }
-            file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+            bot_config_save($c);
         } elseif (!is_array($c['admin'])) {
             $c['admin'] = [$c['admin']];
-            file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+            bot_config_save($c);
         }
         if ($from !== 0 && in_array($from, array_map('intval', $c['admin']), true)) {
             $this->admin = true;
@@ -598,14 +615,47 @@ class Bot
                 // users no longer in the config (deleted) leave the stats
                 $emails     = array_map(fn($e) => (string) ($e['email'] ?? ''), $c['inbounds'][0]['settings']['clients'] ?? []);
                 $p['users'] = array_intersect_key($p['users'] ?? [], array_flip($emails));
-                file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $this->saveXray($c);
                 $this->ssh('pkill xray', 'xr');
                 // not without the egress filter (see scripts/start_xray.sh)
-                $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray.json > /dev/null 2>&1 &', 'xr');
+                $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray/xray.json > /dev/null 2>&1 &', 'xr');
                 return $p;
             });
         } else {
-            file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->saveXray($c);
+        }
+    }
+
+    /**
+     * Before the bot starts (scripts/start_php.sh): the other containers
+     * wait for php to be healthy, so they start with these files in place
+     * and in the current format. Nothing is reloaded here.
+     */
+    public function prepare()
+    {
+        $this->getHashBot();
+        $this->getHashSubdomain('oc');
+        bot_write(BOT_DATA . '/up/upstream.conf', $this->upstreamConf(bot_read(BOT_DATA . '/up/upstream.conf')));
+        $this->cloakNginx(false);
+        $this->writeWarpKey();
+    }
+
+    // upstream.conf (nginx stream in up) in the current format
+    public function upstreamConf(string $t): string
+    {
+        // the include sits next to it in /etc/nginx/bot (./data/up)
+        return str_replace('include /etc/nginx/deny;', 'include /etc/nginx/bot/deny;', $t);
+    }
+
+    /**
+     * The WARP+ license key for scripts/start_wp.sh, in the warp volume
+     * (shared by php and wp only): wp needs no access to the settings.
+     */
+    public function writeWarpKey()
+    {
+        $key = (string) ($this->getPacConf()['warp'] ?? '');
+        if (is_dir('/etc/warp')) {
+            bot_write('/etc/warp/license_key', preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key) ? "$key\n" : '');
         }
     }
 
@@ -750,20 +800,20 @@ class Bot
         }
         $f = file_get_contents($this->file . $r['result']['file_path']);
         if (!empty($f)) {
-            file_put_contents('/app/webapp/override.html', $f);
+            bot_write(BOT_DATA . '/www/override.html', $f, 0644);
         }
         $this->menu('config');
     }
 
     public function delOverrideHtml()
     {
-        @unlink('/app/webapp/override.html');
+        @unlink(BOT_DATA . '/www/override.html');
         $this->menu('config');
     }
 
     public function restartOcserv($conf)
     {
-        file_put_contents('/config/ocserv.conf', $conf);
+        bot_write(BOT_DATA . '/ocserv/ocserv.conf', $conf);
         $this->ssh('pkill ocserv', 'oc');
         $pac = $this->getPacConf();
         if (!empty($pac['ocserv']) && !empty($this->getHashSubdomain('oc'))) {
@@ -799,7 +849,7 @@ class Bot
             $this->send($this->input['chat'], 'wrong secret: 1-64 characters A-Z a-z 0-9 . _ ~ -');
             return $this->menu('oc');
         }
-        $c = file_get_contents('/config/ocserv.conf');
+        $c = bot_read(BOT_DATA . '/ocserv/ocserv.conf');
         $t = preg_replace('~^camouflage_secret[^\n]+~sm', "camouflage_secret = \"$pass\"", $c);
         $this->restartOcserv($t);
         $this->menu('oc');
@@ -811,7 +861,7 @@ class Bot
             return;
         }
         $oc = $this->getHashSubdomain('oc');
-        $c  = file_get_contents('/config/ocserv.conf');
+        $c  = bot_read(BOT_DATA . '/ocserv/ocserv.conf');
         $t  = preg_replace('~^default-domain[^\n]+~sm', "default-domain = $oc.$domain", $c);
         $this->restartOcserv($t);
     }
@@ -829,7 +879,7 @@ class Bot
         foreach ($clients as $k => $v) {
             $this->ssh('echo ' . escapeshellarg($pass) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($v), 'oc');
         }
-        $this->restartOcserv(file_get_contents('/config/ocserv.conf'));
+        $this->restartOcserv(bot_read(BOT_DATA . '/ocserv/ocserv.conf'));
         $this->menu('oc');
     }
 
@@ -1014,14 +1064,9 @@ class Bot
      */
     public function updateXrayStats(callable $fn)
     {
-        $l = fopen('/config/xray.stats.lock', 'c');
-        flock($l, LOCK_EX);
-        try {
+        bot_lock(BOT_DATA . '/xray.stats', function () use ($fn) {
             $this->setXrayStats($fn($this->getXrayStats()));
-        } finally {
-            flock($l, LOCK_UN);
-            fclose($l);
-        }
+        });
     }
 
     // traffic of client $c (from the Xray config): [download, upload]
@@ -1039,7 +1084,7 @@ class Bot
         try {
             $pac = $this->getPacConf();
             if (!empty($pac['autoscan'])) {
-                require __DIR__ . '/config.php';
+                $c = $this->config();
                 if (!empty($c['admin']) && (empty($this->time3) || ((time() - $this->time3) > $pac['autoscan_timeout']))) {
                     $this->time3 = time();
                     $r = $this->analysisIp(return: 1);
@@ -1142,7 +1187,7 @@ class Bot
                     $pac['last_reset_xray_time'] = $now;
                     $this->setPacConf($pac);
                     $this->resetXrStats(1);
-                    require __DIR__ . '/config.php';
+                    $c = $this->config();
                     foreach ($c['admin'] as $admin) {
                         $this->send($admin, "vless: reset stats");
                     }
@@ -1231,7 +1276,7 @@ class Bot
     // $file: also keep a plain copy there (local, for the bot's own update)
     public function sendBackup($file = false)
     {
-        require __DIR__ . '/config.php';
+        $c = $this->config();
         $conf = $this->getPacConf();
         $json = $this->export();
         if (!empty($file)) {
@@ -1300,7 +1345,7 @@ class Bot
     public function checkVersion()
     {
         try {
-            require __DIR__ . '/config.php';
+            $c = $this->config();
             if (!empty($c['admin']) && (empty($this->time) || ((time() - $this->time) > 3600))) {
                 $this->time = time();
                 $last       = trim(exec('git -C / rev-parse @{u} 2>/dev/null'));
@@ -1337,7 +1382,7 @@ class Bot
     public function checkCert()
     {
         try {
-            require __DIR__ . '/config.php';
+            $c = $this->config();
             if (!empty($c['admin']) && date('H') == 12 && (empty($this->time2) || ((time() - $this->time2) > 4600))) {
                 $this->time2 = time();
                 $cert = $this->expireCert();
@@ -1397,19 +1442,19 @@ class Bot
     public function export()
     {
         $conf = [
-            'ad'  => yaml_parse_file($this->adguard),
+            'ad'  => $this->getAdguard(),
             'pac' => $this->getPacConf(),
             'ssl' => file_exists('/certs/cert_private') && preg_match('~BEGIN PRIVATE KEY~', file_get_contents('/certs/cert_private')) ? [
                 'private' => file_get_contents('/certs/cert_private'),
                 'public'  => file_get_contents('/certs/cert_public'),
             ] : false,
-            'dnstt' => file_exists('/config/dnstt/server.key') ? [
-                'private' => file_get_contents('/config/dnstt/server.key'),
-                'public'  => file_get_contents('/config/dnstt/server.pub'),
+            'dnstt' => file_exists(BOT_DATA . '/dnstt/server.key') ? [
+                'private' => bot_read(BOT_DATA . '/dnstt/server.key'),
+                'public'  => bot_read(BOT_DATA . '/dnstt/server.pub'),
             ] : false,
             'xray'          => $this->getXray(),
-            'oc'            => file_get_contents('/config/ocserv.conf'),
-            'ocu'           => file_get_contents('/config/ocserv.passwd'),
+            'oc'            => bot_read(BOT_DATA . '/ocserv/ocserv.conf'),
+            'ocu'           => bot_read(BOT_DATA . '/ocserv/ocserv.passwd'),
             'xraystats'     => $this->getXrayStats(),
         ];
         return json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -1502,7 +1547,7 @@ class Bot
                 $out[] = 'update adguard';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 $this->stopAd();
-                yaml_emit_file($this->adguard, $json['ad']);
+                $this->saveAdguard($json['ad']);
                 $this->startAd();
             }
             // xray
@@ -1527,7 +1572,7 @@ class Bot
             if (!empty($json['oc'])) {
                 $out[] = 'update ocserv';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                file_put_contents('/config/ocserv.passwd', $json['ocu']);
+                bot_write(BOT_DATA . '/ocserv/ocserv.passwd', (string) $json['ocu']);
                 $this->restartOcserv($json['oc']);
             }
             if (!empty($json['pac']['domain'])) {
@@ -1537,8 +1582,8 @@ class Bot
             if (!empty($json['dnstt'])) {
                 $out[] = 'update dnstt certificates';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                file_put_contents('/config/dnstt/server.key', $json['dnstt']['private']);
-                file_put_contents('/config/dnstt/server.pub', $json['dnstt']['public']);
+                bot_write(BOT_DATA . '/dnstt/server.key', (string) $json['dnstt']['private']);
+                bot_write(BOT_DATA . '/dnstt/server.pub', (string) $json['dnstt']['public'], 0644);
             }
             // nginx
             $out[] = 'reset nginx';
@@ -1617,7 +1662,7 @@ class Bot
 
     public function sslip()
     {
-        require __DIR__ . '/config.php';
+        $c = $this->config();
         $p  = $this->getPacConf();
         $ip = $this->ip;
         $r  = $this->send($c['admin'][0], "start $ip");
@@ -1715,14 +1760,18 @@ class Bot
         $this->menu('config');
     }
 
+    // the settings; an exception if they cannot be read (never defaults
+    // that would then be written over them)
     public function getPacConf()
     {
-        return json_decode(file_get_contents($this->pac), true);
+        return bot_read_json($this->pac);
     }
 
     public function setPacConf(array $conf)
     {
-        return file_put_contents($this->pac, json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        // read by the web pools (subscriptions)
+        bot_write_json($this->pac, $conf, 0640, BOT_GID_WEB);
+        return true;
     }
 
     public function domain()
@@ -1755,20 +1804,39 @@ class Bot
         ];
     }
 
+    // AdGuard's config; an exception if it cannot be read or parsed
+    public function getAdguard(): array
+    {
+        $c = yaml_parse(bot_read($this->adguard));
+        if (!is_array($c)) {
+            throw new RuntimeException("damaged {$this->adguard}");
+        }
+        return $c;
+    }
+
+    public function saveAdguard(array $c)
+    {
+        $y = yaml_emit($c);
+        if (!is_string($y) || $y === '') {
+            throw new RuntimeException("cannot encode {$this->adguard}");
+        }
+        bot_write($this->adguard, $y);
+    }
+
     public function adguardSync()
     {
         $pac = $this->getPacConf();
         $pac['adpswd'] = $pac['adpswd'] ?: bin2hex(random_bytes(8));
         $this->setPacConf($pac);
         $ssl = $this->nginxGetTypeCert();
-        $c   = yaml_parse_file($this->adguard);
+        $c   = $this->getAdguard();
         $this->stopAd();
         $c['users'][0]['password'] = password_hash($pac['adpswd'], PASSWORD_DEFAULT);
         if (!empty($ssl) && !empty($pac['domain']) && empty($c['tls']['enabled'])) {
             $c['tls']['enabled']     = true;
             $c['tls']['server_name'] = $pac['domain'];
         }
-        yaml_emit_file($this->adguard, $c);
+        $this->saveAdguard($c);
         $this->startAd();
     }
 
@@ -1909,9 +1977,7 @@ class Bot
     // admins and their names live in config.php ($c['admin'], $c['admin_names'])
     public function adminConfig(): array
     {
-        $file = __DIR__ . '/config.php';
-        opcache_invalidate($file);
-        require $file;
+        $c = $this->config();
         $c['admin']       = array_values(array_map('intval', (array) ($c['admin'] ?? [])));
         $c['admin_names'] = (array) ($c['admin_names'] ?? []);
         return $c;
@@ -1919,9 +1985,7 @@ class Bot
 
     public function saveAdminConfig(array $c)
     {
-        $file = __DIR__ . '/config.php';
-        file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
-        opcache_invalidate($file);
+        bot_config_save($c);
     }
 
     // the name; the id until a name is set (admins added before names)
@@ -2038,9 +2102,9 @@ class Bot
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $out[] = $this->stopAd();
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        $c = yaml_parse_file($this->adguard);
+        $c = $this->getAdguard();
         $c['users'][0]['password'] = password_hash($pass, PASSWORD_DEFAULT);
-        yaml_emit_file($this->adguard, $c);
+        $this->saveAdguard($c);
         $p = $this->getPacConf();
         $p['adpswd'] = $pass;
         $this->setPacConf($p);
@@ -2054,10 +2118,10 @@ class Bot
     {
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        // restore the default config from the repo; /.git is mounted read-only
-        $default = shell_exec('git -C / show HEAD:config/AdGuardHome.yaml');
-        if (!empty($default)) {
-            file_put_contents('/config/AdGuardHome.yaml', $default);
+        // the default config: the template in /config
+        $default = @file_get_contents('/config/AdGuardHome.yaml');
+        if (!empty($default) && is_array(yaml_parse($default))) {
+            bot_write($this->adguard, $default);
         }
         $this->adguardSync();
         $this->cloakNginx();
@@ -2068,7 +2132,7 @@ class Bot
     public function adguardXrayClients()
     {
         $xr = $this->getXray();
-        $ad = yaml_parse_file($this->adguard);
+        $ad = $this->getAdguard();
         foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
             $tmp[] = [
                 'safe_search' => [
@@ -2101,7 +2165,7 @@ class Bot
             ];
         }
         $ad['clients']['persistent'] = $tmp;
-        yaml_emit_file($this->adguard, $ad);
+        $this->saveAdguard($ad);
         $this->stopAd();
         $this->startAd();
     }
@@ -2167,9 +2231,9 @@ class Bot
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $out[] = $this->stopAd();
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        $c = yaml_parse_file($this->adguard);
+        $c = $this->getAdguard();
         $c['dns']['upstream_dns'][] = $url;
-        yaml_emit_file($this->adguard, $c);
+        $this->saveAdguard($c);
         $out[] = $this->startAd();
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         sleep(3);
@@ -2181,10 +2245,10 @@ class Bot
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $this->stopAd();
-        $c = yaml_parse_file($this->adguard);
+        $c = $this->getAdguard();
         unset($c['dns']['upstream_dns'][$k]);
         $c['dns']['upstream_dns'] = array_values($c['dns']['upstream_dns']);
-        yaml_emit_file($this->adguard, $c);
+        $this->saveAdguard($c);
         $this->startAd();
         $this->menu('adguard');
     }
@@ -2821,7 +2885,7 @@ class Bot
         // the domain goes into a background "sh -c" command: allow hostnames only
         if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~D', $c['dnsttDomain'])) {
             $this->ssh('echo ' . escapeshellarg("vpnbot:{$c['dnsttPassword']}") . ' | chpasswd', 'dnstt');
-            if (!file_exists('/config/dnstt/server.key')) {
+            if (!file_exists(BOT_DATA . '/dnstt/server.key')) {
                 $this->ssh("dnstt-server -gen-key -privkey-file /dnstt/server.key -pubkey-file /dnstt/server.pub", 'dnstt');
             }
             $this->ssh("dnstt-server -udp :53 -privkey-file /dnstt/server.key {$c['dnsttDomain']} 127.0.0.1:22", 'dnstt' , false, '/logs/dnstt');
@@ -2833,13 +2897,13 @@ class Bot
 
     public function dnsttDownload()
     {
-        $this->sendFile($this->input['from'], curl_file_create('/config/dnstt/server.pub'));
+        $this->sendFile($this->input['from'], curl_file_create(BOT_DATA . '/dnstt/server.pub'));
     }
 
     public function dnstt($update = false)
     {
         $c      = $this->getPacConf();
-        $pubkey = file_get_contents('/config/dnstt/server.pub');
+        $pubkey = (string) @file_get_contents(BOT_DATA . '/dnstt/server.pub');
         $text[] = "dnstt";
         if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword'])) {
             $text[] = "<pre>set the NS record for {$c['dnsttDomain']}: tns.{$c['domain']}\nset A record for tns.{$c['domain']}: {$this->ip}</pre>";
@@ -3700,8 +3764,8 @@ class Bot
             }
         }
         $this->setPacConf($pac);
-        file_put_contents('/config/deny', $text ?: '');
-        $this->ssh('nginx -s reload', 'up');
+        bot_write(BOT_DATA . '/up/deny', $text ?: '');
+        $this->ssh(self::NGINX_UP . ' -s reload', 'up');
     }
 
     public function linkXray($i, $s = false)
@@ -3888,7 +3952,7 @@ class Bot
     {
         $pac    = $this->getPacConf();
         $domain = $this->getDomain();
-        $ocserv = file_get_contents('/config/ocserv.conf');
+        $ocserv = bot_read(BOT_DATA . '/ocserv/ocserv.conf');
         preg_match('~^camouflage_secret[^\n]+?"([^"]+)*"~sm', $ocserv, $m);
         $cs = $m[1];
         $pass   = htmlspecialchars((string) ($pac['ocserv'] ?? ''));
@@ -4041,7 +4105,7 @@ class Bot
 
     public function getClientsOc()
     {
-        $users = array_filter(explode("\n", file_get_contents('/config/ocserv.passwd')), fn ($e) => !empty($e));
+        $users = array_filter(explode("\n", bot_read(BOT_DATA . '/ocserv/ocserv.passwd')), fn ($e) => !empty($e));
         return array_map(fn($e) => explode(':', $e)[0], $users);
     }
 
@@ -4138,12 +4202,14 @@ class Bot
 
     public function getXrayStats()
     {
-        return json_decode(@file_get_contents('/config/xray.stats'), true) ?: [];
+        // no file yet: no traffic counted yet
+        $f = BOT_DATA . '/xray.stats';
+        return is_file($f) ? bot_read_json($f) : [];
     }
 
     public function setXrayStats($x)
     {
-        file_put_contents('/config/xray.stats', json_encode($x));
+        bot_write_json(BOT_DATA . '/xray.stats', (array) $x, 0640, BOT_GID_WEB, 0);
     }
 
     public function resetXrUser($i)
@@ -4753,6 +4819,7 @@ class Bot
             unset($c['warp']);
         }
         $this->setPacConf($c);
+        $this->writeWarpKey();
 
         if (!$step('generating profile', 'cd /etc/warp && wgcf generate', 'wp')) {
             $this->send($chat, $log);
@@ -4882,7 +4949,7 @@ class Bot
                 $xr = $this->getXray();
                 foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
                     if (empty($v['off']) && $v['email'] == $m['email']) {
-                        require __DIR__ . '/config.php';
+                        $c = $this->config();
                         foreach ($c['admin'] as $admin) {
                             $this->send($admin, "vless: {$m['email']} limit ip " . count($this->pool[$m['email']]['ips']) . ' > ' . ($pac['ip_count'] ?: 1), button: [[
                                 [
@@ -4940,7 +5007,7 @@ class Bot
         } else {
             unset($c['inbounds'][0]['settings']['clients'][$arg[1]]["{$arg[0]}template"]);
         }
-        file_put_contents('/config/xray.json', json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->saveXray($c);
         $this->userXr($arg[1]);
     }
 
@@ -5837,7 +5904,13 @@ class Bot
 
     public function getXray()
     {
-        return json_decode(file_get_contents('/config/xray.json'), true);
+        return bot_read_json(BOT_DATA . '/xray/xray.json');
+    }
+
+    // the Xray config as the bot keeps it; Xray reads it as /xray/xray.json
+    public function saveXray(array $c)
+    {
+        bot_write_json(BOT_DATA . '/xray/xray.json', $c);
     }
 
     public function setUpstreamDomain($domain)
@@ -5846,10 +5919,10 @@ class Bot
         if (!$this->validHost($domain)) {
             return;
         }
-        $nginx = file_get_contents('/config/upstream.conf');
-        $t = preg_replace('~#domain.+#domain~s', "#domain\n$domain reality;\n#domain", $nginx);
-        file_put_contents('/config/upstream.conf', $t);
-        $this->ssh("nginx -s reload 2>&1", 'up');
+        $nginx = bot_read(BOT_DATA . '/up/upstream.conf');
+        $t = preg_replace('~#domain.+#domain~s', "#domain\n$domain reality;\n#domain", $this->upstreamConf($nginx));
+        bot_write(BOT_DATA . '/up/upstream.conf', $t);
+        $this->ssh(self::NGINX_UP . ' -s reload 2>&1', 'up');
     }
 
     public function setUpstreamDomainOcserv($domain)
@@ -5858,10 +5931,10 @@ class Bot
             return;
         }
         $sub   = $this->getHashSubdomain('oc');
-        $nginx = file_get_contents('/config/upstream.conf');
-        $t     = preg_replace('~#ocserv.+#ocserv~s', $domain ? "#ocserv\n" . ($sub ? '' : '#' ) . "$sub.$domain ocserv;\n#ocserv" : "#ocserv\n#$sub.\$domain ocserv;\n#ocserv", $nginx);
-        file_put_contents('/config/upstream.conf', $t);
-        $this->ssh("nginx -s reload 2>&1", 'up');
+        $nginx = bot_read(BOT_DATA . '/up/upstream.conf');
+        $t     = preg_replace('~#ocserv.+#ocserv~s', $domain ? "#ocserv\n" . ($sub ? '' : '#' ) . "$sub.$domain ocserv;\n#ocserv" : "#ocserv\n#$sub.\$domain ocserv;\n#ocserv", $this->upstreamConf($nginx));
+        bot_write(BOT_DATA . '/up/upstream.conf', $t);
+        $this->ssh(self::NGINX_UP . ' -s reload 2>&1', 'up');
     }
 
     /**
@@ -5933,13 +6006,14 @@ class Bot
         return $this->getDomain($pac['transport'] != 'Reality');
     }
 
-    public function cloakNginx()
+    // nginx.conf for ng, made from the template config/nginx_default.conf
+    public function nginxConf(): string
     {
         $conf     = $this->getPacConf();
         if (!empty($conf['domain']) && !$this->validHost($conf['domain'])) {
             $conf['domain'] = '';
         }
-        $template = file_get_contents('/config/nginx_default.conf');
+        $template = bot_read('/config/nginx_default.conf');
         // $template = preg_replace('~server_name ip~', "server_name {$this->ip}", $template);
         $template = preg_replace('~server_name domain~', "server_name " . ($conf['domain'] ? " *.{$conf['domain']} {$conf['domain']}" : '_'), $template);
         if ($conf['domain'] && $conf['letsencrypt']) {
@@ -5965,19 +6039,30 @@ class Bot
             location
         CONF;
         $template = preg_replace('~(location /adguard.+?})\s*location~s', $r, $template);
-        $template = preg_replace('~(/webapp|/pac|/adguard|/ws|location /dns-query)~', '${1}' . $h, $template);
-        file_put_contents('/config/nginx.conf', $template);
-        $x = $this->getXray();
-        if (!empty($x['inbounds'][0]['streamSettings']['wsSettings']['path'])) {
-            $x['inbounds'][0]['streamSettings']['wsSettings']['path'] = "/ws$h";
-            $this->restartXray($x);
-        }
-        if (!empty($x['inbounds'][0]['streamSettings']['xhttpSettings']['path'])) {
-            $x['inbounds'][0]['streamSettings']['xhttpSettings']['path'] = "/ws$h";
-            $this->restartXray($x);
-        }
+        return preg_replace('~(/webapp|/pac|/adguard|/ws|location /dns-query)~', '${1}' . $h, $template);
+    }
 
-        return $this->ssh('nginx -s reload', 'ng');
+    /**
+     * Writes nginx.conf and keeps Xray's path in line with it. $reload:
+     * reload nginx and restart Xray if its path changed; false while the
+     * containers are not up yet (before the start, see prepare()).
+     */
+    public function cloakNginx($reload = true)
+    {
+        bot_write(BOT_DATA . '/ng/nginx.conf', $this->nginxConf());
+        $h       = $this->getHashBot();
+        $x       = $this->getXray();
+        $changed = false;
+        foreach (['wsSettings', 'xhttpSettings'] as $k) {
+            if (!empty($x['inbounds'][0]['streamSettings'][$k]['path']) && $x['inbounds'][0]['streamSettings'][$k]['path'] !== "/ws$h") {
+                $x['inbounds'][0]['streamSettings'][$k]['path'] = "/ws$h";
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $this->restartXray($x, !$reload);
+        }
+        return $reload ? $this->ssh(self::NGINX_NG . ' -s reload', 'ng') : '';
     }
 
     public function getHashSubdomain($subdomain)
@@ -6014,9 +6099,9 @@ class Bot
             $text .= "DNS over TLS:\n<code>tls://" . (!empty($conf['adguardkey'] )? "{$conf['adguardkey']}." : '') . "$domain</code>";
         }
         $status = $this->i18n($this->adguardUp() ? 'on' : 'off');
-        $safesearch = yaml_parse_file($this->adguard)['filtering']['safe_search']['enabled'];
+        $safesearch = $this->getAdguard()['filtering']['safe_search']['enabled'];
         $text .= "\n\nstatus: $status\t\tsafesearch: " . $this->i18n($safesearch ? 'on' : 'off');
-        $allowedClients = yaml_parse_file($this->adguard)['dns']['allowed_clients'];
+        $allowedClients = $this->getAdguard()['dns']['allowed_clients'];
         $text .= $allowedClients ? "\n\nallowed clients: \n - " . htmlspecialchars(implode("\n - ", $allowedClients)) : '';
 
         $data = [
@@ -6069,7 +6154,7 @@ class Bot
                 'callback_data' => "/addupstream",
             ],
         ];
-        $upstreams = yaml_parse_file($this->adguard)['dns']['upstream_dns'];
+        $upstreams = $this->getAdguard()['dns']['upstream_dns'];
         if (!empty($upstreams)) {
             foreach ($upstreams as $k => $v) {
                 $data[] = [
@@ -6102,7 +6187,7 @@ class Bot
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $this->stopAd();
-        $c = yaml_parse_file($this->adguard);
+        $c = $this->getAdguard();
         if (!empty($delete)) {
             unset($c['dns']['allowed_clients']);
         } else {
@@ -6118,7 +6203,7 @@ class Bot
                 }
             }
         }
-        yaml_emit_file($this->adguard, $c);
+        $this->saveAdguard($c);
         $this->startAd();
         $this->menu('adguard');
     }
@@ -6392,7 +6477,7 @@ class Bot
             ],
         ];
         // cover page at the site root ("fake html")
-        $fake   = is_file('/app/webapp/override.html');
+        $fake   = is_file(BOT_DATA . '/www/override.html');
         $data[] = array_values(array_filter([
             [
                 'text'          => $this->i18n('fake html') . ': ' . $this->i18n($fake ? 'on' : 'off'),
@@ -6629,7 +6714,7 @@ class Bot
         $m  = trim((string) @file_get_contents('/update/message'));
         file_put_contents('/update/message', '');
         file_put_contents('/update/reload_message', '');
-        require __DIR__ . '/config.php';
+        $c = $this->config();
         $chat = preg_match('~^-?\d+$~D', $rm[0] ?? '') ? (int) $rm[0] : (int) ($c['admin'][0] ?? 0);
         $to   = preg_match('~^\d+$~D', $rm[1] ?? '') ? (int) $rm[1] : null;
         if (file_exists($this->update)) {
@@ -6888,16 +6973,15 @@ class Bot
 
     public function debug()
     {
-        $file = __DIR__ . '/config.php';
-        require $file;
-        $c['debug'] = !$c['debug'];
-        file_put_contents($file, "<?php\n\n\$c = " . var_export($c, true) . ";\n");
+        $c = $this->config();
+        $c['debug'] = empty($c['debug']);
+        bot_config_save($c);
         $this->menu('config');
     }
 
     public function nginxGetTypeCert()
     {
-        $conf = $this->ssh('cat /etc/nginx/nginx.conf', 'ng');
+        $conf = @file_get_contents(BOT_DATA . '/ng/nginx.conf');
         preg_match("/#~([^\s]+)/", $conf, $m);
         return $m[1];
     }

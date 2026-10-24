@@ -9,7 +9,8 @@ WGCF_CONF="$WGCF_DIR/wgcf-profile.conf"
 WGCF_TOML="$WGCF_DIR/wgcf-account.toml"
 SOCKS_PORT="${SOCKS_PORT:-1080}"
 
-WARP_LICENSE_KEY=$(jq -r '.warp // empty' /config/pac.json)
+# written by the bot into the warp volume (Bot::writeWarpKey)
+WARP_LICENSE_KEY=$(head -n 1 "$WGCF_DIR/license_key" 2>/dev/null | tr -d '\r\n')
 # goes into a sed expression below: key characters only
 case "$WARP_LICENSE_KEY" in
     *[!A-Za-z0-9-]*) WARP_LICENSE_KEY= ;;

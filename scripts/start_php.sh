@@ -16,6 +16,9 @@ for n in up ng ad xr oc wp dnstt service; do
 done
 openssl req -newkey rsa:2048 -sha256 -nodes -x509 -days 365 -keyout /certs/self_private -out /certs/self_public  -subj "/C=NN/ST=N/L=N/O=N/CN=$IP"
 if [ -s /ssh/key.pub ]; then
+    # configs in place and in the current format before the other
+    # containers start (they wait for php to be healthy)
+    php prepare.php || echo "prepare.php failed, see /logs/php_error" >&2
     php-fpm83 -R -D
     php init.php
 else

@@ -37,8 +37,8 @@ services:
                 image: ${IMAGE}
         volumes:
             - ./config/.profile:/root/.ashrc:ro
-            - ./config/upstream.conf:/etc/nginx/nginx.conf:ro
-            - ./config/deny:/etc/nginx/deny:ro
+            # a folder, not single files: the bot replaces them by rename
+            - ./data/up:/etc/nginx/bot:ro
             - ./scripts/start_upstream.sh:/start_upstream.sh:ro
             - ./sshpub:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
@@ -85,10 +85,10 @@ services:
                 image: ${IMAGE}
         volumes:
             - ./config/.profile:/root/.ashrc:ro
-            - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
-            - ./config/override.conf:/etc/nginx/override.conf:ro
-            - ./config/location.conf:/etc/nginx/location.conf:ro
-            - ./config/nginx_default.conf:/nginx_default.conf:ro
+            - ./data/ng:/etc/nginx/bot:ro
+            - ./data/www:/www:ro
+            # override.conf and location.conf (your own nginx includes)
+            - ./config:/etc/nginx/user:ro
             - ./scripts/start_ng.sh:/start_ng.sh:ro
             - ./certs/:/certs/:ro
             - ./sshpub:/ssh:ro
@@ -121,7 +121,7 @@ services:
             xr:
                 condition: service_started
         healthcheck:
-            test: ["CMD", "nginx", "-t"]
+            test: ["CMD", "nginx", "-t", "-q", "-c", "/etc/nginx/bot/nginx.conf"]
             interval: 10s
             timeout: 5s
             retries: 3
@@ -145,6 +145,7 @@ services:
             - ./config/php.ini:/etc/php83/php.ini:ro
             - ./config/php-fpm.conf:/etc/php83/php-fpm.d/www.conf:ro
             - ./config/:/config/
+            - ./data:/data
             - ./certs/:/certs/
             - ./ssh:/ssh
             - ./sshpub:/sshpub
@@ -202,6 +203,7 @@ services:
             - ./config/.profile:/root/.ashrc:ro
             - ./config/php.ini:/etc/php83/php.ini:ro
             - ./config/:/config/
+            - ./data:/data
             - ./certs/:/certs/
             - ./ssh:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
@@ -260,7 +262,8 @@ services:
             - ./sshpub:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/ad:/etc/ssh/pinned:ro
-            - ./config/:/config/
+            # AdGuard's own config only (AdGuard rewrites it from its panel)
+            - ./data/adguard:/config
             - ./certs/:/certs/:ro
             - ./logs/:/logs/
             - ./scripts/start_ad.sh:/start_ad.sh:ro
@@ -303,7 +306,7 @@ services:
             - ./sshpub:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/xr:/etc/ssh/pinned:ro
-            - ./config/xray.json:/xray.json:ro
+            - ./data/xray:/xray:ro
             - ./scripts/start_xray.sh:/start_xray.sh:ro
             - ./logs:/logs
         hostname: xray
@@ -346,7 +349,7 @@ services:
             - ./sshpub:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/oc:/etc/ssh/pinned:ro
-            - ./config:/etc/ocserv
+            - ./data/ocserv:/etc/ocserv
             - ./certs:/certs:ro
             - ./scripts/start_oc.sh:/start_oc.sh:ro
         hostname: ocserv
@@ -394,7 +397,6 @@ services:
             - ./sshpub:/ssh:ro
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/wp:/etc/ssh/pinned:ro
-            - ./config/pac.json:/config/pac.json:ro
             - ./scripts/start_wp.sh:/start_wp.sh:ro
             - warp:/etc/warp
         hostname: warp
@@ -435,7 +437,7 @@ services:
             - ./logs:/logs
             - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/dnstt:/etc/ssh/pinned:ro
-            - ./config/dnstt:/dnstt
+            - ./data/dnstt:/dnstt
             - ./scripts/start_dnstt.sh:/start_dnstt.sh:ro
         hostname: dnstt
         container_name: dnstt-${VER}

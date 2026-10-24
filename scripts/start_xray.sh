@@ -35,8 +35,8 @@ else
     echo "xray: firewall rules failed, xray is not started" >&2
 fi
 
-uuid=$(jq -r '.inbounds[0].settings.clients[0].id // empty' /xray.json)
+uuid=$(jq -r '.inbounds[0].settings.clients[0].id // empty' /xray/xray.json)
 if [ -n "$uuid" ] && [ ! -e /tmp/fw_failed ]; then
-    xray run -config /xray.json > /dev/null 2>&1 &
+    xray run -config /xray/xray.json > /dev/null 2>&1 &
 fi
 tail -f /dev/null

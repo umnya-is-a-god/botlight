@@ -31,9 +31,10 @@ fi
 
 git clone -b "$BRANCH" https://github.com/umnya-is-a-god/botlight.git "$DIR"
 cd "$DIR"
-echo "<?php
+mkdir -p ./data
+(umask 077 && echo "<?php
 
-\$c = ['key' => '$KEY'];" > ./app/config.php
+\$c = ['key' => '$KEY'];" > ./data/config.php)
 make u
 # start the bot again after a reboot (make uncron turns it off)
 systemctl enable --now cron >/dev/null 2>&1 || true

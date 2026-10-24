@@ -1,4 +1,6 @@
 /app/config.php
+# the bot's working state (settings, keys, configs): scripts/migrate_data.sh
+/data/
 /certs/*
 !/certs/.gitkeep
 /logs/*

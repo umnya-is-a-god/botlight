@@ -11,6 +11,8 @@ preup:
 	bash ./scripts/update.sh &
 start: # запуск контейнеров
 	touch ./override.env ./docker-compose.override.yml ./config/location.conf ./config/override.conf
+	@# the working state into ./data (once; nothing is overwritten)
+	sh ./scripts/migrate_data.sh
 	sh ./scripts/ports.sh
 	IP=$(IP) VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
 	@# drop superseded builds of the botlight images (quiet)
