@@ -109,6 +109,11 @@ class Bot
             'new_member_id'     => $input['my_chat_member']['new_chat_member']['user']['id'] ?? false,
             'new_member_status' => $input['my_chat_member']['new_chat_member']['status'] ?? false,
         ];
+        // private chats only: not groups, channels or other chat events
+        $type = $input['message']['chat']['type'] ?? $input['callback_query']['message']['chat']['type'] ?? '';
+        if ($type !== 'private') {
+            return;
+        }
         $this->auth();
         if ($this->admin) {
             $this->session();
@@ -380,6 +385,9 @@ class Bot
             case preg_match('~^/addadmin$~', $this->input['callback'], $m):
                 $this->enterAdmin();
                 break;
+            case preg_match('~^/addAdminYes (\d{1,20})$~', $this->input['callback'], $m):
+                $this->addAdminYes((int) $m[1]);
+                break;
             case preg_match('~^/enterPage$~', $this->input['callback'], $m):
                 $this->enterPage();
                 break;
@@ -427,8 +435,8 @@ class Bot
             case preg_match('~^/listXr (\d+)$~', $this->input['callback'], $m):
                 $this->listXr($m[1]);
                 break;
-            case preg_match('~^/deladmin (\d+)$~', $this->input['callback'], $m):
-                $this->delAdmin($m[1]);
+            case preg_match('~^/deladmin (\d+)( yes)?$~', $this->input['callback'], $m):
+                $this->delAdmin($m[1], !empty($m[2]));
                 break;
             case preg_match('~^/adminCard (\d+)$~', $this->input['callback'], $m):
                 $this->adminCard($m[1]);
@@ -520,8 +528,8 @@ class Bot
             case preg_match('~^/export$~', $this->input['callback'], $m):
                 $this->sendBackup();
                 break;
-            case preg_match('~^/import$~', $this->input['callback'], $m):
-                $this->import();
+            case preg_match('~^/import( yes)?$~', $this->input['callback'], $m):
+                $this->import(!empty($m[1]));
                 break;
             case preg_match('~^/importList (includelist|blocklist|warplist|rulessetlist|white|deny)$~', $this->input['callback'], $m):
                 $this->importList($m[1]);
@@ -1571,7 +1579,11 @@ class Bot
         if ($this->isMainAdmin()) {
             return true;
         }
-        $this->answer($this->input['callback_id'], 'only the main admin can do this', true);
+        if (!empty($this->input['callback_id'])) {
+            $this->answer($this->input['callback_id'], 'only the main admin can do this', true);
+        } else {
+            $this->send($this->input['chat'], 'only the main admin can do this');
+        }
         return false;
     }
 
@@ -1744,8 +1756,18 @@ class Bot
         $this->writeWarpKey();
     }
 
-    public function import()
+    // restore: main admin only, after a confirmation
+    public function import($yes = false)
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
+        if (empty($yes)) {
+            return $this->update($this->input['chat'], $this->input['message_id'], $this->i18n('import') . "\n\nThe backup replaces the settings, users, keys and certificates of this server. Xray, AdGuard and OpenConnect restart.", [
+                [['text' => $this->i18n('import'), 'callback_data' => '/import yes']],
+                [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
+            ]);
+        }
         $r = $this->send(
             $this->input['chat'],
             "@{$this->input['username']} " . $this->i18n('send the export file:'),
@@ -1764,6 +1786,9 @@ class Bot
     // the typed text (if any) is ignored
     public function importFromChat($text = '')
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         if (empty($this->input['file_id'])) {
             $this->send($this->input['chat'], 'send the backup as a file');
             return;
@@ -1774,6 +1799,9 @@ class Bot
     // reply with the password for an encrypted backup ($fileId from the prompt)
     public function importWithPassword($text, $fileId)
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $this->input['file_id'] = $fileId;
         $this->importFile(false, trim((string) $text));
     }
@@ -2374,6 +2402,9 @@ class Bot
 
     public function enterAdmin()
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $r = $this->send(
             $this->input['chat'],
             "@{$this->input['username']} " . $this->i18n('enter id / name'),
@@ -2491,11 +2522,32 @@ class Bot
             $this->send($this->input['chat'], 'wrong format: id / name, like 123456789 / Pete (name: letters, digits, emoji, space . _ @ -)');
             return;
         }
-        $c = $this->adminConfig();
-        if (!in_array((int) $m[1], $c['admin'], true)) {
-            $c['admin'][] = (int) $m[1];
+        if (!$this->mainAdminOnly()) {
+            return;
         }
-        $c['admin_names'][(int) $m[1]] = $m[2];
+        // an admin can do almost everything: confirmed first
+        $_SESSION['add_admin'] = [(int) $m[1], $m[2]];
+        $this->send($this->input['chat'], $this->i18n('add') . ' ' . $this->i18n('admin') . ': <code>' . (int) $m[1] . '</code> ' . htmlspecialchars($m[2]) . "?\nAn admin manages the whole server: users, keys, settings.", button: [
+            [['text' => $this->i18n('yes'), 'callback_data' => '/addAdminYes ' . (int) $m[1]]],
+            [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
+        ]);
+    }
+
+    public function addAdminYes(int $id)
+    {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
+        [$pid, $name] = $_SESSION['add_admin'] ?? [0, ''];
+        unset($_SESSION['add_admin']);
+        if ($pid !== $id || !$this->validName($name)) {
+            return $this->menu('config');
+        }
+        $c = $this->adminConfig();
+        if (!in_array($id, $c['admin'], true)) {
+            $c['admin'][] = $id;
+        }
+        $c['admin_names'][$id] = $name;
         $this->saveAdminConfig($c);
         $this->menu('config');
     }
@@ -2564,8 +2616,11 @@ class Bot
         $this->adminCard($id);
     }
 
-    public function delAdmin($id)
+    public function delAdmin($id, $yes = false)
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $c = $this->adminConfig();
         $k = array_search((int) $id, $c['admin'], true);
         // never the main admin (the first one): the bot always keeps an
@@ -2574,6 +2629,12 @@ class Bot
         if ($k === false || $k === 0) {
             $this->answer($this->input['callback_id'], $k === false ? 'no such admin' : 'the main admin cannot be removed', true);
             return;
+        }
+        if (empty($yes)) {
+            return $this->update($this->input['chat'], $this->input['message_id'], $this->i18n('delete') . ' ' . $this->i18n('admin') . ' ' . htmlspecialchars($this->adminLabel($c, (int) $id)) . '?', [
+                [['text' => $this->i18n('yes'), 'callback_data' => "/deladmin $id yes"]],
+                [['text' => $this->i18n('back'), 'callback_data' => "/adminCard $id"]],
+            ]);
         }
         unset($c['admin'][$k], $c['admin_names'][(int) $id]);
         $c['admin'] = array_values($c['admin']);
@@ -7114,6 +7175,9 @@ class Bot
 
     public function rebuildMenu()
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
@@ -7130,6 +7194,9 @@ class Bot
 
     public function rebuild()
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $this->xrayStatsUser(true);
         $this->sendBackup();
         $this->hostCommand('3', 'rebuild images...');
@@ -7806,9 +7873,17 @@ class Bot
         $this->logs();
     }
 
-    // the switch lives in the settings: the web pools cannot read config.php
+    /**
+     * Debug for 30 minutes (it turns itself off): the web pools log the
+     * shape of requests (debug.php, values masked), SSH errors come to the
+     * chat. The switch lives in the settings: the web pools cannot read
+     * config.php. Main admin only.
+     */
     public function debug()
     {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
         $p = $this->getPacConf();
         if ($this->debugOn()) {
             unset($p['debug_until']);
