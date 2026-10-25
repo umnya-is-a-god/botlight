@@ -44,6 +44,8 @@ class Bot
     public $later = [];
     public $time_warp_profile;
     public $time_logrotate;
+    // when the IP limit last alerted about a user
+    public $ipAlerted = [];
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -374,6 +376,9 @@ class Bot
             case preg_match('~^/resetXrUser ([\w-]{1,40})$~', $this->input['callback'], $m):
                 $this->withXr($m[1], fn($i) => $this->resetXrUser($i));
                 break;
+            case preg_match('~^/newSubXr ([\w-]{1,40})( yes)?$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->newSubXr($i, !empty($m[2])));
+                break;
             case preg_match('~^/resetXrStats$~', $this->input['callback'], $m):
                 $this->resetXrStats();
                 break;
@@ -544,7 +549,8 @@ class Bot
         }
     }
 
-    public function restartXray($c, $norestart = false, $rename = null)
+    // the parts of the Xray config the bot relies on: API, stats, policy, rules order
+    public function xrayNormalize(array $c): array
     {
         $c['inbounds'][0]['settings']['clients'] = array_values($c['inbounds'][0]['settings']['clients']);
         // Xray's access log lists every site each user opens: kept only while
@@ -603,8 +609,9 @@ class Bot
         $other = array_filter($rules, fn($e) => ($e['outboundTag'] ?? '') != 'api' && ($e['ruleTag'] ?? '') != 'private-block');
         $c['routing']['rules'] = array_values(array_merge($api, [$private], $other));
         $c['stats'] = new stdClass();
+        // HandlerService: users are added and removed without a restart
         $c['api'] = [
-            'services' => ['StatsService'],
+            'services' => ['StatsService', 'HandlerService'],
             'tag'      => 'api'
         ];
         $l = new stdClass();
@@ -619,6 +626,12 @@ class Bot
             "statsOutboundUplink"   => true,
             "statsOutboundDownlink" => true
         ];
+        return $c;
+    }
+
+    public function restartXray($c, $norestart = false, $rename = null)
+    {
+        $c = $this->xrayNormalize($c);
         $json = json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (empty($norestart)) {
             // Xray's counters start from zero after the restart. In one locked
@@ -669,6 +682,89 @@ class Bot
             return true;
         }
         return false;
+    }
+
+    /**
+     * A change of the user list without restarting Xray: users that went or
+     * changed (id) are removed and the new or changed ones added through
+     * Xray's API (HandlerService); the config file gets the same list (after
+     * the test). Anything else changed, or the API failing: restartXray.
+     * $rename: [old name, new name] (its traffic record moves along).
+     */
+    public function xrayApplyUsers(array $c, ?array $rename = null): bool
+    {
+        $c   = $this->xrayNormalize($c);
+        $old = $this->xrayNormalize($this->getXray());
+        $a   = $old;
+        $b   = $c;
+        unset($a['inbounds'][0]['settings']['clients'], $b['inbounds'][0]['settings']['clients']);
+        if ($a != $b) {
+            return $this->restartXray($c, false, $rename);
+        }
+        $by  = fn($cfg) => array_column(array_map(fn($e) => ['email' => (string) ($e['email'] ?? ''), 'c' => array_intersect_key($e, array_flip(['id', 'email', 'flow']))], $cfg['inbounds'][0]['settings']['clients']), 'c', 'email');
+        $was = $by($old);
+        $now = $by($c);
+        $rm  = array_keys(array_filter($was, fn($v, $k) => !isset($now[$k]) || $now[$k] != $v, ARRAY_FILTER_USE_BOTH));
+        $add = array_values(array_filter($now, fn($v, $k) => !isset($was[$k]) || $was[$k] != $v, ARRAY_FILTER_USE_BOTH));
+        $json = json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $ok   = true;
+        $api  = true;
+        $this->updateXrayStats(function ($p) use ($c, $json, $rename, $rm, $add, $was, &$ok, &$api) {
+            if (!$this->applyConfig(BOT_DATA . '/xray/xray.json', $json, 'xr', self::XRAY_TEST)) {
+                $ok = false;
+                return $p;
+            }
+            $this->saveXrayView($c);
+            if (($cnt = $this->xrayCounters()) === null) {
+                // Xray does not answer: it gets the file on its next start
+                return $p;
+            }
+            $p    = $this->applyCounters($this->foldIfXrayRestarted($p, $cnt), $cnt, array_keys($was));
+            $tag  = $c['inbounds'][0]['tag'] ?? 'vless_tls';
+            $gone = array_diff($rm, array_column($add, 'email'));
+            if ($rm) {
+                $out = $this->ssh('xray api rmu --server=127.0.0.1:8080 -tag=' . escapeshellarg($tag) . ' ' . implode(' ', array_map('escapeshellarg', $rm)) . ' 2>&1', 'xr');
+                $api = $api && preg_match('~Removed (\d+) user~', $out, $m) && (int) $m[1] === count($rm);
+            }
+            if ($add && $api) {
+                $in  = json_encode(['inbounds' => [[
+                    'tag'      => $tag,
+                    'port'     => $c['inbounds'][0]['port'] ?? 443,
+                    'protocol' => 'vless',
+                    'settings' => ['clients' => $add, 'decryption' => 'none'],
+                ]]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $out = $this->ssh('printf %s ' . escapeshellarg($in) . ' | xray api adu --server=127.0.0.1:8080 stdin: 2>&1', 'xr');
+                $api = preg_match('~Added (\d+) user~', $out, $m) && (int) $m[1] === count($add);
+            }
+            if (!$api) {
+                return $p;
+            }
+            // traffic: by name; a renamed user's record moves (its new name
+            // counts from zero), a deleted one's goes
+            if ($rename && isset($p['users'][$rename[0]])) {
+                $u = $p['users'][$rename[0]];
+                $u['global'] = [
+                    'download' => ($u['global']['download'] ?? 0) + ($u['session']['download'] ?? 0),
+                    'upload'   => ($u['global']['upload'] ?? 0) + ($u['session']['upload'] ?? 0),
+                ];
+                $u['session'] = ['download' => 0, 'upload' => 0];
+                $p['users'][$rename[1]] = $u;
+                $gone[] = $rename[0];
+            }
+            foreach (array_unique(array_merge($gone, $rename ? [$rename[1]] : [])) as $e) {
+                // counters of a name stay in Xray: zero them for a later user of that name
+                foreach (['downlink', 'uplink'] as $d) {
+                    $this->ssh('xray api stats --server=127.0.0.1:8080 -reset -name ' . escapeshellarg("user>>>$e>>>traffic>>>$d") . ' >/dev/null 2>&1', 'xr');
+                }
+            }
+            $p['users'] = array_diff_key($p['users'] ?? [], array_flip(array_diff($gone, $rename ? [$rename[1]] : [])));
+            return $p;
+        });
+        if ($ok && !$api) {
+            // no API (an Xray from before HandlerService) or it failed: restart
+            return $this->restartXray($c, false, $rename);
+        }
+        return $ok;
     }
 
     // Xray started again; its errors go to /logs/xray_error
@@ -3042,14 +3138,29 @@ class Bot
         $domains = explode(',', $domains);
         $domains = array_filter($domains, fn($x) => !empty(trim($x)));
         if (!empty($domains)) {
-            $conf = $this->getPacConf();
+            $conf  = $this->getPacConf();
+            $wrong = [];
             foreach ($domains as $k => $v) {
+                $v = trim($v);
                 if (in_array($type, ['white', 'deny'])) {
+                    if (!$this->validIpOrCidr($v)) {
+                        $wrong[] = $v;
+                        continue;
+                    }
                     $conf[$type][] = $v;
+                } elseif ($type == 'rulessetlist' || $this->validIpOrCidr($v)) {
+                    $conf[$type][$v] = true;
+                } elseif (($a = idn_to_ascii($v)) === false || $a === '') {
+                    // not a name idn_to_ascii can convert: told, not added as ""
+                    $wrong[] = $v;
                 } else {
-                    $conf[$type][$type == 'rulessetlist' ? trim($v) : idn_to_ascii(trim($v))] = true;
+                    $conf[$type][$a] = true;
                 }
             }
+            if ($wrong) {
+                $this->send($this->input['chat'], 'not added: ' . htmlspecialchars(implode(', ', $wrong)));
+            }
+            $conf[$type] ??= [];
             ksort($conf[$type]);
             $this->setPacConf($conf);
             $page = (int) floor(array_search($v, array_keys($conf[$type])) / $this->limit);
@@ -3109,100 +3220,20 @@ class Bot
                 ],
             ],
         ];
-        if (!empty($c['blocklist']) && !empty(array_filter($c['blocklist']))) {
-            $domains = array_keys(array_filter($c['blocklist'], function ($v, $k){
-                    if (!empty($v)) {
-                        if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }, ARRAY_FILTER_USE_BOTH));
-            if (!empty($domains)) {
-                $rules[] = [
-                    "type"        => "field",
-                    "outboundTag" => "block",
-                    "domain"      => array_keys(array_filter($c['blocklist'], function ($v, $k){
-                        if (!empty($v)) {
-                            if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }, ARRAY_FILTER_USE_BOTH)),
-                ];
-            }
-        }
-        if (!empty($c['blocklist']) && !empty(array_filter($c['blocklist']))) {
-            $ips = array_keys(array_filter($c['blocklist'], function ($v, $k){
-                    if (!empty($v)) {
-                        if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }, ARRAY_FILTER_USE_BOTH));
-            if (!empty($ips)) {
-                $rules[] = [
-                    "type"        => "field",
-                    "outboundTag" => "block",
-                    "ip"          => array_keys(array_filter($c['blocklist'], function ($v, $k){
-                        if (!empty($v)) {
-                            if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }, ARRAY_FILTER_USE_BOTH)),
-                ];
-            }
-        }
-        if (!empty($c['warplist']) && !empty(array_filter($c['warplist']))) {
-            $domains = array_keys(array_filter($c['warplist'], function ($v, $k){
-                    if (!empty($v)) {
-                        if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }, ARRAY_FILTER_USE_BOTH));
-            if (!empty($domains)) {
-                $rules[] = [
-                    "type"        => "field",
-                    "outboundTag" => "warp",
-                    "domain"      => array_keys(array_filter($c['warplist'], function ($v, $k){
-                        if (!empty($v)) {
-                            if (!preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }, ARRAY_FILTER_USE_BOTH)),
-                ];
-            }
-        }
-        if (!empty($c['warplist']) && !empty(array_filter($c['warplist']))) {
-            $ips = array_keys(array_filter($c['warplist'], function ($v, $k){
-                    if (!empty($v)) {
-                        if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }, ARRAY_FILTER_USE_BOTH));
-            if (!empty($ips)) {
-                $rules[] = [
-                    "type"        => "field",
-                    "outboundTag" => "warp",
-                    "ip"          => array_keys(array_filter($c['warplist'], function ($v, $k){
-                        if (!empty($v)) {
-                            if (preg_match('~^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$~', $k)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }, ARRAY_FILTER_USE_BOTH)),
-                ];
+        // entries switched on: addresses (IPv4/IPv6, CIDR) go to "ip", names to "domain"
+        $rules = [];
+        foreach (['blocklist' => 'block', 'warplist' => 'warp'] as $list => $tag) {
+            $on      = array_map('strval', array_keys(array_filter($c[$list] ?? [])));
+            $ips     = array_values(array_filter($on, [$this, 'validIpOrCidr']));
+            $domains = array_values(array_diff($on, $ips));
+            foreach (['domain' => $domains, 'ip' => $ips] as $field => $v) {
+                if ($v) {
+                    $rules[] = [
+                        "type"        => "field",
+                        "outboundTag" => $tag,
+                        $field        => $v,
+                    ];
+                }
             }
         }
         $xr['routing']['rules'] = $rules ?: [];
@@ -4953,9 +4984,9 @@ class Bot
         $r  = $this->getXray();
         foreach ($r['inbounds'][0]['settings']['clients'] as $k => $v) {
             if ($i == $k) {
-                // its traffic leaves the stats in restartXray (by name)
+                // its traffic record goes with it (xrayApplyUsers)
                 unset($r['inbounds'][0]['settings']['clients'][$k]);
-                $this->restartXray($r);
+                $this->xrayApplyUsers($r);
                 $this->adguardXrayClients();
                 break;
             }
@@ -5028,7 +5059,7 @@ class Bot
                 $this->send($this->input['chat'], 'wrong user: name[:uuid], name of letters, digits, emoji, space . _ @ -');
                 return $this->xray();
             }
-            $uuid = ($user[1] ?? '') ?: trim($this->ssh('xray uuid', 'xr'));
+            $uuid = ($user[1] ?? '') ?: $this->uuid();
             if (in_array($uuid, $uuids ?: []) || in_array($user[0], $emails ?: [])) {
                 $this->send($this->input['chat'], "user {$user[0]} already exists");
                 return $this->xray();
@@ -5042,7 +5073,7 @@ class Bot
                     'email' => $user[0],
             ];
         }
-        $this->restartXray($c);
+        $this->xrayApplyUsers($c);
         $this->adguardXrayClients();
         if (count($users) == 1) {
             $this->userXr(count($c['inbounds'][0]['settings']['clients']) - 1);
@@ -5052,17 +5083,56 @@ class Bot
     }
 
 
+    /**
+     * A new subscription link: the user gets a new id, so the old vless link
+     * and subscription stop working. Name, traffic, templates and on/off
+     * stay (switched off: the new id waits in "off").
+     */
+    public function newSubXr($i, $yes = false)
+    {
+        $c   = $this->getXray();
+        $cl  = $c['inbounds'][0]['settings']['clients'][$i];
+        $uid = $this->xrUid($cl);
+        if (empty($yes)) {
+            return $this->update($this->input['chat'], $this->input['message_id'], $this->i18n('new subscription link') . ': ' . htmlspecialchars((string) $cl['email']) . "?\n\nThe current vless link and subscription of this user stop working; the user needs the new ones.", [
+                [['text' => $this->i18n('yes'), 'callback_data' => "/newSubXr $uid yes"]],
+                [['text' => $this->i18n('back'), 'callback_data' => "/userXr $uid"]],
+            ]);
+        }
+        $new = $this->uuid();
+        if (!empty($cl['off'])) {
+            $c['inbounds'][0]['settings']['clients'][$i]['off'] = $new;
+        } else {
+            $c['inbounds'][0]['settings']['clients'][$i]['id'] = $new;
+        }
+        if (!$this->xrayApplyUsers($c)) {
+            return $this->userXr($i);
+        }
+        $this->adguardXrayClients();
+        $this->send($this->input['chat'], htmlspecialchars((string) $cl['email']) . ': new links below, the old ones no longer work');
+        $this->userXr($i);
+    }
+
+    // a random UUID (v4)
+    public function uuid(): string
+    {
+        $b    = random_bytes(16);
+        $b[6] = chr(ord($b[6]) & 0x0f | 0x40);
+        $b[8] = chr(ord($b[8]) & 0x3f | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+    }
+
     public function switchXr($i, $nm = 0)
     {
         $c = $this->getXray();
         if (empty($c['inbounds'][0]['settings']['clients'][$i]['off'])) {
             $c['inbounds'][0]['settings']['clients'][$i]['off'] = $c['inbounds'][0]['settings']['clients'][$i]['id'];
-            $c['inbounds'][0]['settings']['clients'][$i]['id']  = trim($this->ssh('xray uuid', 'xr'));
+            $c['inbounds'][0]['settings']['clients'][$i]['id']  = $this->uuid();
         } else {
             $c['inbounds'][0]['settings']['clients'][$i]['id'] = $c['inbounds'][0]['settings']['clients'][$i]['off'];
             unset($c['inbounds'][0]['settings']['clients'][$i]['off']);
         }
-        $this->restartXray($c);
+        $this->xrayApplyUsers($c);
         // a user switched off gets no DNS either (allowed clients)
         $this->adguardXrayClients();
         if (empty($nm)) {
@@ -5092,7 +5162,7 @@ class Bot
         }
         // Xray counts traffic by name: the record moves to the new name
         $c['inbounds'][0]['settings']['clients'][$i]['email'] = $name;
-        $this->restartXray($c, false, [$old, $name]);
+        $this->xrayApplyUsers($c, [$old, $name]);
         $this->adguardXrayClients();
         $this->userXr($i);
     }
@@ -5125,10 +5195,17 @@ class Bot
         $this->userXr($i);
     }
 
+    // all traffic to zero: Xray's counters through its API, no restart
     public function resetXrStats($nomenu = false)
     {
-        $this->restartXray($this->getXray());
-        $this->updateXrayStats(fn($p) => []);
+        $this->updateXrayStats(function ($p) {
+            $this->ssh('xray api statsquery --server=127.0.0.1:8080 -pattern "" -reset > /dev/null 2>&1', 'xr');
+            $st = [];
+            if (($u = $this->xrayUptime()) !== null) {
+                $st['xray_uptime'] = $u;
+            }
+            return $st;
+        });
         if (empty($nomenu)) {
             $this->xray();
         }
@@ -5878,11 +5955,13 @@ class Bot
                 }
             }
         }
-        if (empty(preg_match('~(?<date>.+)\sfrom\s(?<ip>\d+\.\d+\.\d+\.\d+)(?=.+email:\s(?<email>.+))~', $line, $m))) {
+        // "from 1.2.3.4:5678 accepted ... email: name" or "from [2001:db8::1]:5678 ..."
+        if (empty(preg_match('~\sfrom\s(?:tcp:|udp:)?(?:\[(?<ip6>[0-9A-Fa-f:.]+)\]|(?<ip4>\d+\.\d+\.\d+\.\d+)):\d+\s.*?email:\s(?<email>.+)$~', trim($line), $m))) {
             return;
         }
+        $m['ip'] = ($m['ip4'] ?? '') !== '' ? $m['ip4'] : ($m['ip6'] ?? '');
         if (!empty($m['ip']) && !empty($m['email'])) {
-            $ip = ip2long($m['ip']);
+            $ip = $m['ip'];
             if (!empty($this->pool[$m['email']]['ip']) && $this->pool[$m['email']]['ip'] != $ip) {
                 $this->pool[$m['email']]['ips'][$ip] = time();
             }
@@ -5890,6 +5969,12 @@ class Bot
                 $xr = $this->getXray();
                 foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
                     if (empty($v['off']) && $v['email'] == $m['email']) {
+                        // one alert per user in 30 minutes
+                        if (time() - ($this->ipAlerted[$m['email']] ?? 0) < 1800) {
+                            unset($this->pool[$m['email']]);
+                            break;
+                        }
+                        $this->ipAlerted[$m['email']] = time();
                         $c = $this->config();
                         foreach ($c['admin'] as $admin) {
                             // the button shows the user's state (on): pressing it switches the user off
@@ -6111,6 +6196,12 @@ class Bot
             [
                 'text'          => $this->i18n('delete'),
                 'callback_data' => "/delxr $uid",
+            ],
+        ];
+        $data[] = [
+            [
+                'text'          => $this->i18n('new subscription link'),
+                'callback_data' => "/newSubXr $uid",
             ],
         ];
         $data[] = [

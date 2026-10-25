@@ -5,6 +5,10 @@ $i = [
         'en' => 'allowed clients',
         'ru' => 'разрешённые клиенты',
     ],
+    'new subscription link' => [
+        'en' => 'new subscription link',
+        'ru' => 'новая ссылка подписки',
+    ],
     'days'                 => [
         'en' => 'days',
         'ru' => 'дней',
