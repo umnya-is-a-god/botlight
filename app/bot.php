@@ -60,10 +60,10 @@ class Bot
         $this->pac      = BOT_DATA . '/pac.json';
         $this->ip       = filter_var(getenv('IP'), FILTER_VALIDATE_IP) ?: '';
         $this->i18n     = $i18n;
-        $this->language = $this->getPacConf()['language'] ?: 'en';
+        $this->language = ($this->getPacConf()['language'] ?? null) ?: 'en';
         $this->dns      = '1.1.1.1, 8.8.8.8';
         $this->mtu      = 1350;
-        $this->limit    = $this->getPacConf()['limitpage'] ?: 5;
+        $this->limit    = ($this->getPacConf()['limitpage'] ?? null) ?: 5;
         $this->adguard  = BOT_DATA . '/adguard/AdGuardHome.yaml';
         // a plain settings backup that versions before ./data left for
         // their update (read once by selfUpdate, never written now)
@@ -252,7 +252,7 @@ class Bot
                 $this->cleanDeny($m[1]);
                 break;
             case preg_match('~^/denyList (.+?)(?:\s(\d))?$~', $this->input['callback'], $m):
-                $this->denyList($m[1], $m[2] ?: 0);
+                $this->denyList($m[1], ($m[2] ?? null) ?: 0);
                 break;
             case preg_match('~^/cleanLogs (.+?)(?:\s(1))?$~', $this->input['callback'], $m):
                 $this->cleanLogs($m[1], $m[2]);
@@ -436,7 +436,7 @@ class Bot
                 break;
             // /chT s|c <user id> d (default) | o (origin) | <template id>
             case preg_match('~^/chT ([sc]) ([\w-]{1,40}) (d|o|[0-9a-f]{10})$~', $this->input['callback'], $m):
-                $this->withXr($m[2], fn($i) => $this->choiceTemplate($m[1] == 's' ? 'sing' : 'clash', $i, $m[3]));
+                $this->withXr($m[2], fn($i) => $this->choiceTemplate(($m[1] ?? null) == 's' ? 'sing' : 'clash', $i, $m[3]));
                 break;
             case preg_match('~^/templateUser (sing|clash) ([\w-]{1,40})$~', $this->input['callback'], $m):
                 $this->withXr($m[2], fn($i) => $this->templateUser($m[1], $i));
@@ -472,7 +472,7 @@ class Bot
                 $this->addNipdomain();
                 break;
             case preg_match('~^/(?P<action>change|delete)(?P<typelist>includelist|blocklist|warplist|rulessetlist|white|deny) (?P<arg>[0-9a-f]{10})(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
-                $this->listPacChange($m['typelist'], $m['action'], $m['arg'], $m['page'] ?: 0);
+                $this->listPacChange($m['typelist'], $m['action'], $m['arg'], ($m['page'] ?? null) ?: 0);
                 break;
             case preg_match('~^/domain$~', $this->input['callback'], $m):
                 $this->domain();
@@ -487,19 +487,19 @@ class Bot
                 $this->warpPlus();
                 break;
             case preg_match('~^/xray(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xray($m[1] ?: 0);
+                $this->xray(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/xtlsblock(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlsblock($m[1] ?: 0);
+                $this->xtlsblock(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/routes(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->routes($m[1] ?: 0);
+                $this->routes(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/xtlswarp(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlswarp($m[1] ?: 0);
+                $this->xtlswarp(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/xtlsrulesset(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->xtlsrulesset($m[1] ?: 0);
+                $this->xtlsrulesset(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/templateCopy (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
                 $this->templateCopy($m[1], $m[2]);
@@ -565,7 +565,7 @@ class Bot
         $c['log']['access']   = empty($this->getPacConf()['ip_limit']) ? 'none' : '/logs/xray';
         $c['log']['loglevel'] = 'warning';
         foreach ($c['inbounds'] as $v) {
-            if ($v['tag'] == 'api') {
+            if (($v['tag'] ?? null) == 'api') {
                 $api = true;
                 break;
             }
@@ -582,7 +582,7 @@ class Bot
             ];
         }
         foreach ($c['routing']['rules'] as $v) {
-            if ($v['outboundTag'] == 'api') {
+            if (($v['outboundTag'] ?? null) == 'api') {
                 $rule = true;
                 break;
             }
@@ -1506,14 +1506,14 @@ class Bot
                                 ]];
                             }
                         }
-                        if ($pac['silence'] == 0 || $pac['silence'] == 1) {
+                        if (($pac['silence'] ?? null) == 0 || ($pac['silence'] ?? null) == 1) {
                             foreach ($c['admin'] as $k => $v) {
                                 $this->send($v, "suspicious ips found: $text" . ($ban ? "\nbanned:$ban" : ''), button: $ips ?: [[
                                     [
                                         'text'          => $this->i18n('analyze'),
                                         'callback_data' => '/analysisIp',
                                     ],
-                                ]], disable_notification: $pac['silence'] ? true : false);
+                                ]], disable_notification: !empty($pac['silence']) ? true : false);
                             }
                         }
                     }
@@ -1901,6 +1901,7 @@ class Bot
             ],
         ];
         $text = '';
+        $i    = 0;
         foreach ($items as $k => $v) {
             if (($t = gmdate($k, $seconds) - $v['diff']) > 0) {
                 $text .= " $t{$v['sign']}";
@@ -2140,7 +2141,7 @@ class Bot
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 $this->restartXray($json['xray']);
                 $this->adguardXrayClients();
-                $this->setUpstreamDomain($json['pac']['transport'] != 'Reality' ? 't' : ($json['pac']['reality']['domain'] ?: $json['xray']['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]));
+                $this->setUpstreamDomain(($json['pac']['transport'] ?? null) != 'Reality' ? 't' : (($json['pac']['reality']['domain'] ?? null) ?: $json['xray']['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]));
             }
             // xraystats
             if (!empty($json['xraystats'])) {
@@ -2176,8 +2177,8 @@ class Bot
             $this->cloakNginx();
 
             $out[] = "end import";
-            $this->language = $this->getPacConf()['language'] ?: 'en';
-            $this->limit    = $this->getPacConf()['limitpage'] ?: 5;
+            $this->language = ($this->getPacConf()['language'] ?? null) ?: 'en';
+            $this->limit    = ($this->getPacConf()['limitpage'] ?? null) ?: 5;
             if (empty($file)) {
                 // the log stays as a message of its own, the menu goes back in place
                 $this->send($this->input['chat'], implode("\n", $out));
@@ -2476,7 +2477,7 @@ class Bot
             }
         }
         if ($leaf === null) {
-            return ['', '', $m[0] ? 'the private key does not belong to any certificate in the file' : 'no certificate in the file'];
+            return ['', '', !empty($m[0]) ? 'the private key does not belong to any certificate in the file' : 'no certificate in the file'];
         }
         $info = openssl_x509_parse($m[0][$leaf]);
         if (($info['validTo_time_t'] ?? 0) <= time()) {
@@ -3618,7 +3619,7 @@ class Bot
                 ],
             ];
         }
-        return [$data, $text];
+        return [$data, $text ?? ''];
     }
 
     // $id: shortId() of the entry; an entry removed meanwhile changes nothing
@@ -3862,7 +3863,7 @@ class Bot
     public function menu($type = false, $arg = false, $return = false)
     {
         $conf   = $this->getPacConf();
-        $domain = $conf['domain'] ?: $this->ip;
+        $domain = ($conf['domain'] ?? null) ?: $this->ip;
         $hash   = $this->getHashBot();
         if ($type == false) {
             $update = exec('git -C / rev-list --count HEAD..@{u}');
@@ -3911,11 +3912,11 @@ class Bot
             $portcol = [
                 $this->i18n('on') . ' 443',
                 $this->i18n('on') . ' 443',
-                $this->i18n($ports['ad']['enable'] ? 'on' : 'off') . ($ports['ad']['enable'] ? ' ' . $ports['ad']['port'] : ' port is closed'),
+                $this->i18n(!empty($ports['ad']['enable']) ? 'on' : 'off') . (!empty($ports['ad']['enable']) ? ' ' . $ports['ad']['port'] : ' port is closed'),
             ];
             if ($dnstt) {
                 $status[]  = $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
-                $portcol[] = $this->i18n($ports['dnstt']['enable'] ? 'on' : 'off') . ($ports['dnstt']['enable'] ? ' ' . $ports['dnstt']['port'] : ' port is closed');
+                $portcol[] = $this->i18n(!empty($ports['dnstt']['enable']) ? 'on' : 'off') . (!empty($ports['dnstt']['enable']) ? ' ' . $ports['dnstt']['port'] : ' port is closed');
             }
             $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
             $portcol[] = '';
@@ -3943,7 +3944,7 @@ class Bot
         }
         $menu   = [
             'main' => [
-                'text' => implode("\n", $main ?: []),
+                'text' => implode("\n", $main ?? []),
                 'data' => array_merge(
                     [
                         [
@@ -3991,8 +3992,8 @@ class Bot
             'update'       => $type == 'update'  ? $this->updatebot()                      : false,
         ];
 
-        $text = $menu[$type ?: 'main' ]['text'];
-        $data = $menu[$type ?: 'main' ]['data'];
+        $text = $menu[$type ?: 'main']['text'] ?? '';
+        $data = $menu[$type ?: 'main']['data'] ?? [];
 
         if (empty($type) && $update) {
             array_unshift($data, [
@@ -4031,7 +4032,7 @@ class Bot
     public function switchBanIp()
     {
         $c = $this->getPacConf();
-        $c['autodeny'] = $c['autodeny'] ? 0 : 1;
+        $c['autodeny'] = !empty($c['autodeny']) ? 0 : 1;
         $this->setPacConf($c);
         $this->ipMenu();
     }
@@ -4065,7 +4066,7 @@ class Bot
             unset($c['ip_count']);
         } else {
             $c['ip_limit'] = (int) $limit[0];
-            $c['ip_count'] = (int) $limit[1] ?: 1;
+            $c['ip_count'] = (int) ($limit[1] ?? null) ?: 1;
         }
         $this->setPacConf($c);
         // the access log goes on/off with the limit
@@ -4079,7 +4080,7 @@ class Bot
     public function switchSilence()
     {
         $c = $this->getPacConf();
-        $c['silence'] = (($c['silence'] ?: 0) + 1) % 3;
+        $c['silence'] = ((($c['silence'] ?? null) ?: 0) + 1) % 3;
         $this->setPacConf($c);
         $this->ipMenu();
     }
@@ -4088,23 +4089,23 @@ class Bot
     {
         $text   = $this->i18n('config') . ' -> ' . $this->i18n('IP & Logs');
         $pac    = $this->getPacConf();
-        $d      = count($pac['deny'] ?: []);
-        $w      = count($pac['white'] ?: []);
+        $d      = count(($pac['deny'] ?? null) ?: []);
+        $w      = count(($pac['white'] ?? null) ?: []);
         $data[] = [
             [
-                'text'          => $this->i18n('autoscan') . ': ' . ($pac['autoscan'] ? $this->getTime(strtotime(($pac['autoscan_timeout'] ?: 3600) . ' seconds')) : $this->i18n('off')),
+                'text'          => $this->i18n('autoscan') . ': ' . (!empty($pac['autoscan']) ? $this->getTime(strtotime((($pac['autoscan_timeout'] ?? null) ?: 3600) . ' seconds')) : $this->i18n('off')),
                 'callback_data' => '/autoScanTimeout',
             ],
         ];
         if (!empty($pac['autoscan'])) {
             $data[] = [
                 [
-                    'text'          => $this->i18n('autoblock') . ': ' . $this->i18n($pac['autodeny'] ? 'on' : 'off'),
+                    'text'          => $this->i18n('autoblock') . ': ' . $this->i18n(!empty($pac['autodeny']) ? 'on' : 'off'),
                     'callback_data' => '/switchBanIp',
                 ],
                 [
                     'text'          => $this->i18n('notify') . ': ' . ((function ($pac) {
-                        switch ($pac['silence']) {
+                        switch ($pac['silence'] ?? 0) {
                             case 0:
                                 return '🔊';
                             case 1:
@@ -4202,10 +4203,10 @@ class Bot
     {
         $pac = $this->getPacConf();
         $xr  = [];
-        foreach (array_merge($pac['white'] ?: [], $pac['deny'] ?: [], ['10.10.0.0/23']) as $v) {
+        foreach (array_merge(($pac['white'] ?? null) ?: [], ($pac['deny'] ?? null) ?: [], ['10.10.0.0/23']) as $v) {
             if (preg_match('~^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:(/\d{1,2}))?$~', $v, $m)) {
-                if (!in_array($m[1] . ($m[2] ?: '/32'), $xr)) {
-                    $xr[] = $m[1] . ($m[2] ?: '/32');
+                if (!in_array($m[1] . (($m[2] ?? null) ?: '/32'), $xr)) {
+                    $xr[] = $m[1] . (($m[2] ?? null) ?: '/32');
                 }
             }
         }
@@ -4275,7 +4276,7 @@ class Bot
         $ip  = [];
         foreach ((array) ($cache['ip'] ?? []) as $k => $n) {
             // blocked or ignored since the scan: no longer in the list
-            foreach (array_merge($pac['white'] ?: [], $pac['deny'] ?: []) as $v) {
+            foreach (array_merge(($pac['white'] ?? null) ?: [], ($pac['deny'] ?? null) ?: []) as $v) {
                 $v = (string) $v;
                 if ($v === $k || (str_contains($v, '/') && filter_var($k, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
                     && filter_var(explode('/', $v)[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && $this->ipInRange($k, $v))) {
@@ -4631,13 +4632,13 @@ class Bot
         if (is_array($ip)) {
             foreach ($ip as $v) {
                 $pac['deny'][] = $v;
-                if (($t = array_search($v, $pac['white'] ?: [])) !== false) {
+                if (($t = array_search($v, ($pac['white'] ?? null) ?: [])) !== false) {
                     unset($pac['white'][$t]);
                 }
             }
         } else {
             $pac['deny'][] = $ip;
-            if (($t = array_search($ip, $pac['white'] ?: [])) !== false) {
+            if (($t = array_search($ip, ($pac['white'] ?? null) ?: [])) !== false) {
                 unset($pac['white'][$t]);
             }
         }
@@ -4660,13 +4661,13 @@ class Bot
         if (is_array($ip)) {
             foreach ($ip as $v) {
                 $pac['white'][] = $v;
-                if (($t = array_search($v, $pac['deny'] ?: [])) !== false) {
+                if (($t = array_search($v, ($pac['deny'] ?? null) ?: [])) !== false) {
                     unset($pac['deny'][$t]);
                 }
             }
         } else {
             $pac['white'][] = $ip;
-            if (($t = array_search($ip, $pac['deny'] ?: [])) !== false) {
+            if (($t = array_search($ip, ($pac['deny'] ?? null) ?: [])) !== false) {
                 unset($pac['deny'][$t]);
             }
         }
@@ -4753,8 +4754,8 @@ class Bot
     public function syncDeny()
     {
         $pac = $this->getPacConf();
-        $pac['white'] = array_values(array_filter($pac['white'] ?: [], [$this, 'validIpOrCidr']));
-        $pac['deny']  = array_values(array_filter($pac['deny'] ?: [], [$this, 'validIpOrCidr']));
+        $pac['white'] = array_values(array_filter(($pac['white'] ?? null) ?: [], [$this, 'validIpOrCidr']));
+        $pac['deny']  = array_values(array_filter(($pac['deny'] ?? null) ?: [], [$this, 'validIpOrCidr']));
         $text = '';
         if (!empty($pac['white'])) {
             $pac['white'] = array_unique($pac['white']);
@@ -4767,7 +4768,7 @@ class Bot
             $pac['deny'] = array_unique($pac['deny']);
             sort($pac['deny']);
             foreach ($pac['deny'] as $k => $v) {
-                if (!in_array($v, $pac['white'] ?: [])) {
+                if (!in_array($v, ($pac['white'] ?? null) ?: [])) {
                     $text .= "deny $v;\n";
                 } else {
                     unset($pac['deny'][$k]);
@@ -4807,7 +4808,7 @@ class Bot
     {
         $c      = $this->getXray();
         $pac    = $this->getPacConf();
-        $domain = $this->getDomain($pac['transport'] != 'Reality');
+        $domain = $this->getDomain(($pac['transport'] ?? null) != 'Reality');
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
         $si     = $this->subLink($scheme, $domain, 'si', $c['inbounds'][0]['settings']['clients'][$i]['id']);
@@ -4817,13 +4818,14 @@ class Bot
                 return "sing-box://import-remote-profile/?url={$si}#" . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
 
             default:
-                switch ($pac['transport']) {
+                $rs = $c['inbounds'][0]['streamSettings']['realitySettings'] ?? [];
+                switch ($pac['transport'] ?? '') {
                     case 'Reality':
                         $link = "vless://{$c['inbounds'][0]['settings']['clients'][$i]['id']}@$domain:443"
                                     . "?security=reality"
-                                    . "&sni={$c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]}"
-                                    . "&fp=chrome&pbk={$pac['xray']}"
-                                    . "&sid={$c['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0]}"
+                                    . '&sni=' . ($rs['serverNames'][0] ?? '')
+                                    . '&fp=chrome&pbk=' . ($pac['xray'] ?? '')
+                                    . '&sid=' . ($rs['shortIds'][0] ?? '')
                                     . "&type=tcp"
                                     . "&flow=xtls-rprx-vision"
                                     . '#' . rawurlencode((string) $c['inbounds'][0]['settings']['clients'][$i]['email']);
@@ -5464,7 +5466,7 @@ class Bot
                 $this->send($this->input['chat'], "user {$user[0]} already exists");
                 return $this->xray();
             }
-            $c['inbounds'][0]['settings']['clients'][] = $p['transport'] != 'Reality' ? [
+            $c['inbounds'][0]['settings']['clients'][] = ($p['transport'] ?? null) != 'Reality' ? [
                     'id'    => $uuid,
                     'email' => $user[0],
                 ] : [
@@ -5865,7 +5867,7 @@ class Bot
                 'callback_data' => "/templateCopy $type",
             ],
             [
-                'text'          => $this->i18n($pac["default{$type}template"] && !empty($pac["{$type}templates"][base64_decode($pac["default{$type}template"])]) ? 'off' : 'on'),
+                'text'          => $this->i18n(!empty($pac["default{$type}template"]) && !empty($pac["{$type}templates"][base64_decode($pac["default{$type}template"])]) ? 'off' : 'on'),
                 'callback_data' => "/defaultTemplate $type",
             ],
         ];
@@ -5884,7 +5886,7 @@ class Bot
                     'callback_data' => "/delTemplate $type " . base64_encode($k),
                 ],
                 [
-                    'text'          => $this->i18n($pac["default{$type}template"] == base64_encode($k) ? 'on' : 'off'),
+                    'text'          => $this->i18n(($pac["default{$type}template"] ?? null) == base64_encode($k) ? 'on' : 'off'),
                     'callback_data' => "/defaultTemplate $type " . base64_encode($k),
                 ],
             ];
@@ -5959,10 +5961,10 @@ class Bot
         if (!empty($c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0])) {
             $text[] = "fake domain: <code>{$c['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]}</code>";
         }
-        $text[] = 'transport: ' . ($p['transport'] ?: 'Websocket');
+        $text[] = 'transport: ' . (($p['transport'] ?? null) ?: 'Websocket');
         $st = $this->getXrayStats();
-        $td = $this->getBytes($st['global']['download'] + $st['session']['download']);
-        $tu = $this->getBytes($st['global']['upload'] + $st['session']['upload']);
+        $td = $this->getBytes(($st['global']['download'] ?? 0) + ($st['session']['download'] ?? 0));
+        $tu = $this->getBytes(($st['global']['upload'] ?? 0) + ($st['session']['upload'] ?? 0));
         $text[] = "↓$td  ↑$tu";
         $data[] = [
             [
@@ -5980,7 +5982,7 @@ class Bot
                 'callback_data' => '/mainOutbound',
             ],
         ];
-        $ip_count = $p['ip_count'] ?: 1;
+        $ip_count = ($p['ip_count'] ?? null) ?: 1;
         // behind a bridge every client comes from the bridge's IP: no IP limit
         $data[]   = array_values(array_filter([
             [
@@ -5994,20 +5996,20 @@ class Bot
         ]));
         $data[] = [
             [
-                'text'          => $this->i18n('RLTY') . ' ' . ($p['transport'] == 'Reality' ? $this->i18n('on') : $this->i18n('off')),
+                'text'          => $this->i18n('RLTY') . ' ' . (($p['transport'] ?? null) == 'Reality' ? $this->i18n('on') : $this->i18n('off')),
                 'callback_data' => "/changeTransport Reality",
             ],
             [
-                'text'          => $this->i18n('WS') . ' ' . ($p['transport'] == 'Websocket' ? $this->i18n('on') : $this->i18n('off')),
+                'text'          => $this->i18n('WS') . ' ' . (($p['transport'] ?? null) == 'Websocket' ? $this->i18n('on') : $this->i18n('off')),
                 'callback_data' => "/changeTransport Websocket",
             ],
             [
-                'text'          => $this->i18n('XHTTP') . ' ' . ($p['transport'] == 'xhttp' ? $this->i18n('on') : $this->i18n('off')),
+                'text'          => $this->i18n('XHTTP') . ' ' . (($p['transport'] ?? null) == 'xhttp' ? $this->i18n('on') : $this->i18n('off')),
                 'callback_data' => "/changeTransport xhttp",
             ],
         ];
 
-        if ($p['transport'] == 'Reality') {
+        if (($p['transport'] ?? null) == 'Reality') {
             $data[] = [
                 [
                     'text'          => $this->i18n('changeFakeDomain'),
@@ -6268,8 +6270,8 @@ class Bot
         // resolved by microsocks); a request through WARP can take a few
         // seconds. 1.1.1.1 does not work here: HTTP redirects, HTTPS hangs
         $st = $this->ssh('curl -s -m 8 -x socks5h://wp:1080 https://cloudflare.com/cdn-cgi/trace', 'xr');
-        preg_match('~warp=(\w+)~', $st, $m);
-        return trim($m[1]) ?: 'off';
+        preg_match('~warp=(\w+)~', (string) $st, $m);
+        return trim($m[1] ?? '') ?: 'off';
     }
 
     public function analyzeXray()
@@ -6352,10 +6354,10 @@ class Bot
             if (!empty($this->pool[$m['email']]['ip']) && $this->pool[$m['email']]['ip'] != $ip) {
                 $this->pool[$m['email']]['ips'][$ip] = time();
             }
-            if (!empty($this->pool[$m['email']]['ips']) && count($this->pool[$m['email']]['ips']) > ($pac['ip_count'] ?: 1)) {
+            if (!empty($this->pool[$m['email']]['ips']) && count($this->pool[$m['email']]['ips']) > (($pac['ip_count'] ?? null) ?: 1)) {
                 $xr = $this->getXray();
                 foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
-                    if (empty($v['off']) && $v['email'] == $m['email']) {
+                    if (empty($v['off']) && ($v['email'] ?? null) == $m['email']) {
                         // one alert per user in 30 minutes
                         if (time() - ($this->ipAlerted[$m['email']] ?? 0) < 1800) {
                             unset($this->pool[$m['email']]);
@@ -6365,7 +6367,7 @@ class Bot
                         $c = $this->config();
                         foreach ($c['admin'] as $admin) {
                             // the button shows the user's state (on): pressing it switches the user off
-                            $this->send($admin, "vless: {$m['email']} limit ip " . count($this->pool[$m['email']]['ips']) . ' > ' . ($pac['ip_count'] ?: 1), button: [[
+                            $this->send($admin, "vless: {$m['email']} limit ip " . count($this->pool[$m['email']]['ips']) . ' > ' . (($pac['ip_count'] ?? null) ?: 1), button: [[
                                 [
                                     'text'          => $this->i18n(!empty($v['off']) ? 'off' : 'on') . ' ' . $this->i18n(!empty($v['off']) ? 'state off' : 'state on'),
                                     'callback_data' => '/switchXr ' . $this->xrUid($v),
@@ -6503,7 +6505,7 @@ class Bot
         $pac    = $this->getPacConf();
         $pac['singtemplates']  = $this->getTemplates('sing');
         $pac['clashtemplates'] = $this->getTemplates('clash');
-        $domain = $this->getDomain($pac['transport'] != 'Reality');
+        $domain = $this->getDomain(($pac['transport'] ?? null) != 'Reality');
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
@@ -6550,8 +6552,8 @@ class Bot
                 'web_app' => ['url' => "https://{$domain}/pac$hash?t=cl&s={$c['id']}"]
             ],
         ]));
-        $singtemplate  = $c['singtemplate'] ? base64_decode($c['singtemplate']) : $this->i18n('default') . '(' . ($pac['defaultsingtemplate'] && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : $this->i18n('origin')) . ')';
-        $clashtemplate = $c['clashtemplate'] ? base64_decode($c['clashtemplate']) : $this->i18n('default') . '(' . ($pac['defaultclashtemplate'] && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : $this->i18n('origin')) . ')';
+        $singtemplate  = !empty($c['singtemplate']) ? base64_decode($c['singtemplate']) : $this->i18n('default') . '(' . (!empty($pac['defaultsingtemplate']) && !empty($pac['singtemplates'][base64_decode($pac['defaultsingtemplate'])]) ? base64_decode($pac['defaultsingtemplate']) : $this->i18n('origin')) . ')';
+        $clashtemplate = !empty($c['clashtemplate']) ? base64_decode($c['clashtemplate']) : $this->i18n('default') . '(' . (!empty($pac['defaultclashtemplate']) && !empty($pac['clashtemplates'][base64_decode($pac['defaultclashtemplate'])]) ? base64_decode($pac['defaultclashtemplate']) : $this->i18n('origin')) . ')';
         $data[]        = array_values(array_filter([
             $sing ? [
                 'text'          => $this->i18n('singbox') . ": $singtemplate",
@@ -6577,7 +6579,7 @@ class Bot
             ],
             [
                 // the user's state, pressing it switches the user on/off
-                'text'          => $this->i18n($c['off'] ? 'off' : 'on') . ' ' . $this->i18n($c['off'] ? 'state off' : 'state on'),
+                'text'          => $this->i18n(!empty($c['off']) ? 'off' : 'on') . ' ' . $this->i18n(!empty($c['off']) ? 'state off' : 'state on'),
                 'callback_data' => "/switchXr $uid",
             ],
             [
@@ -6608,10 +6610,10 @@ class Bot
     public function getDomain($cdn = false)
     {
         $c = $this->getPacConf();
-        if ($cdn && $c['linkdomain']) {
+        if ($cdn && !empty($c['linkdomain'])) {
             return $c['linkdomain'];
         }
-        return $c['domain'] ?: $this->ip;
+        return ($c['domain'] ?? null) ?: $this->ip;
     }
 
     public function sub()
@@ -6731,19 +6733,19 @@ class Bot
                 break;
         }
 
-        $outbound = $pac['outbound'] ?: 'proxy';
+        $outbound = ($pac['outbound'] ?? null) ?: 'proxy';
         $c = json_decode($this->replaceTags(json_encode($c), [
             '~outbound~' => $outbound,
         ]), true);
         foreach ($c['outbounds'] ?? [] as $k => $v) {
-            if ($v['tag'] == $outbound) {
+            if (($v['tag'] ?? null) == $outbound) {
                 $index = $k;
                 break;
             }
         }
         if (!isset($index)) {
             foreach ($c['proxies'] ?? [] as $k => $v) {
-                if ($v['name'] == $outbound) {
+                if (($v['name'] ?? null) == $outbound) {
                     $index = $k;
                     break;
                 }
@@ -6759,7 +6761,7 @@ class Bot
         switch ($_GET['t']) {
             case 'si':
                 $c['outbounds'][$index]['uuid'] = '~uid~';
-                switch ($pac['transport']) {
+                switch ($pac['transport'] ?? '') {
                     case 'Reality':
                         unset($c['outbounds'][$index]["transport"]);
                         $c['outbounds'][$index]['flow']                         = 'xtls-rprx-vision';
@@ -6808,7 +6810,7 @@ class Bot
                 $c['proxies'][$index]['server'] = '~domain~';
                 $c['proxies'][$index]['uuid']   = '~uid~';
                 switch (true) {
-                    case $pac['transport'] == 'Reality':
+                    case ($pac['transport'] ?? null) == 'Reality':
                         unset($c['proxies'][$index]["ws-opts"]);
                         unset($c['proxies'][$index]["skip-cert-verify"]);
                         $c['proxies'][$index]["network"]      = "tcp";
@@ -6819,7 +6821,7 @@ class Bot
                             'short-id'   => '~short_id~',
                         ];
                         break;
-                    case $pac['transport'] == 'xhttp':
+                    case ($pac['transport'] ?? null) == 'xhttp':
                         unset($c['proxies'][$index]['ws-opts']);
                         unset($c['proxies'][$index]['flow']);
                         unset($c['proxies'][$index]['reality-opts']);
@@ -6859,19 +6861,19 @@ class Bot
                 break;
         }
         $c = json_decode($this->replaceTags(json_encode($c), [
-            '"~pac~"'        => json_encode(array_keys(array_filter($pac['includelist'] ?: []))),
-            '"~block~"'      => json_encode(array_keys(array_filter($pac['blocklist'] ?: []))),
-            '"~warp~"'       => json_encode(array_keys(array_filter($pac['warplist'] ?: []))),
+            '"~pac~"'        => json_encode(array_keys(array_filter(($pac['includelist'] ?? null) ?: []))),
+            '"~block~"'      => json_encode(array_keys(array_filter(($pac['blocklist'] ?? null) ?: []))),
+            '"~warp~"'       => json_encode(array_keys(array_filter(($pac['warplist'] ?? null) ?: []))),
             '~dns~'          => "https://$domain/dns-query$hash/$uid",
             '~dnspath~'      => "/dns-query$hash/$uid",
             '~uid~'          => $uid,
             '~domain~'       => $domain,
             '~directdomain~' => $pac['domain'],
-            '~cdndomain~'    => $pac['linkdomain'],
-            '~short_id~'     => $xr['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0],
+            '~cdndomain~'    => $pac['linkdomain'] ?? '',
+            '~short_id~'     => $xr['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0] ?? '',
             '~email~'        => $email,
-            '~public_key~'   => $pac['xray'],
-            '~server_name~'  => $xr['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0],
+            '~public_key~'   => $pac['xray'] ?? '',
+            '~server_name~'  => $xr['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0] ?? '',
             '~ip~'           => $this->ip,
             '~outbound~'     => $outbound,
         ]), true);
@@ -6904,13 +6906,13 @@ class Bot
                 break;
         }
         if (!empty($return)) {
-            if ($_GET['t'] == 'cl') {
+            if (($_GET['t'] ?? null) == 'cl') {
                 return yaml_emit($c);
             }
             return json_encode($c);
         }
 
-        if ($_GET['t'] == 'cl') {
+        if (($_GET['t'] ?? null) == 'cl') {
             header('Content-type: text/yaml');
             echo yaml_emit($c);
             return;
@@ -7060,8 +7062,8 @@ class Bot
         $hash   = $this->getHashBot();
         foreach ($c['rules'] as $v) {
             if (array_key_exists('list', $v)) {
-                if ($v['type'] == 'RULE-SET') {
-                    if (!empty($_GET['r']) && $v['name'] == $_GET['r']) {
+                if (($v['type'] ?? null) == 'RULE-SET') {
+                    if (!empty($_GET['r']) && ($v['name'] ?? null) == $_GET['r']) {
                         header("Content-Disposition: attachment; filename={$v['name']}.yaml");
                         header('Content-Type: text/yaml');
                         switch ($v['name']) {
@@ -7112,7 +7114,7 @@ class Bot
         // a ready JSON value, any other tag sits inside a JSON string and its
         // value is escaped so it cannot break out of that string
         foreach ($tags as $k => $v) {
-            if ($k[0] !== '"') {
+            if (($k[0] ?? null) !== '"') {
                 $tags[$k] = substr(json_encode((string) $v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 1, -1);
             }
         }
@@ -7290,7 +7292,7 @@ class Bot
         foreach ($route['rules'] as $k => $v) {
             if (!empty($v['createruleset'])) {
                 foreach ($v['createruleset'] as $r) {
-                    if (!empty($_GET['r']) && $r['name'] == $_GET['r']) {
+                    if (!empty($_GET['r']) && ($r['name'] ?? null) == $_GET['r']) {
                         $this->createSrs($r['name'], $r['rules']);
                     }
                     $ruleset[] = [
@@ -7312,7 +7314,7 @@ class Bot
         if (!empty($route['rules'])) {
             $route['rules']    = array_values($route['rules']);
         }
-        $route['rule_set'] = array_merge($route['rule_set'] ?: [], $ruleset ?: []);
+        $route['rule_set'] = array_merge(($route['rule_set'] ?? null) ?: [], $ruleset ?: []);
         if (empty($route['rule_set'])) {
             unset($route['rule_set']);
         }
@@ -7560,7 +7562,7 @@ class Bot
             unset($pac['reality']['privateKey']);
         }
         if (array_key_exists('backup_password', $pac)) {
-            if (is_string($pac['backup_password']) && $pac['backup_password'] !== '' && function_exists('sodium_crypto_pwhash')) {
+            if (is_string($pac['backup_password'] ?? null) && $pac['backup_password'] !== '' && function_exists('sodium_crypto_pwhash')) {
                 $this->setBackupKey($pac['backup_password']);
             }
             if (function_exists('sodium_crypto_pwhash')) {
@@ -7631,7 +7633,7 @@ class Bot
                 return $d;
             }
         }
-        return $this->getDomain($pac['transport'] != 'Reality');
+        return $this->getDomain(($pac['transport'] ?? null) != 'Reality');
     }
 
     // nginx.conf for ng, made from the template config/nginx_default.conf
@@ -7643,7 +7645,7 @@ class Bot
         }
         $template = bot_read('/config/nginx_default.conf');
         // $template = preg_replace('~server_name ip~', "server_name {$this->ip}", $template);
-        $template = preg_replace('~server_name domain~', "server_name " . ($conf['domain'] ? " *.{$conf['domain']} {$conf['domain']}" : '_'), $template);
+        $template = preg_replace('~server_name domain~', "server_name " . (!empty($conf['domain']) ? " *.{$conf['domain']} {$conf['domain']}" : '_'), $template);
         if ($conf['domain'] && $conf['letsencrypt']) {
             $template = preg_replace('/#~([^\n]+)?/', "#~{$conf['letsencrypt']}", $template);
             preg_match_all('~#-domain.+?#-domain~s', $template, $m);
@@ -7774,7 +7776,7 @@ class Bot
                 ],
                 $this->secretsButton('adguard'),
                 [
-                    'text'          => 'ClientID' . ($conf['adguardkey'] ? ": {$conf['adguardkey']}" : ''),
+                    'text'          => 'ClientID' . (!empty($conf['adguardkey']) ? ": {$conf['adguardkey']}" : ''),
                     'callback_data' => "/setAdguardKey",
                 ],
             ],
@@ -8027,8 +8029,8 @@ class Bot
         $data = [
             [
                 [
-                    'text'          => $conf['domain'] ? "{$this->i18n('delete')} {$conf['domain']}" : $this->i18n('install domain'),
-                    'callback_data' => $conf['domain'] ? '/deldomain' : '/domain',
+                    'text'          => !empty($conf['domain']) ? "{$this->i18n('delete')} {$conf['domain']}" : $this->i18n('install domain'),
+                    'callback_data' => !empty($conf['domain']) ? '/deldomain' : '/domain',
                 ],
                 [
                     'text'          => $this->i18n('nip.io'),
@@ -8094,7 +8096,7 @@ class Bot
                 'callback_data' => "/menu lang",
             ],
             [
-                'text'          => "{$this->i18n('page')}: " . ($conf['limitpage'] ?: 5),
+                'text'          => "{$this->i18n('page')}: " . (($conf['limitpage'] ?? null) ?: 5),
                 'callback_data' => "/enterPage",
             ],
         ];
@@ -8124,7 +8126,7 @@ class Bot
                 'callback_data' => "/backup",
             ],
             [
-                'text'          => $this->i18n('auto update') . ': ' .  $this->i18n($conf['autoupdate'] ? 'on' : 'off'),
+                'text'          => $this->i18n('auto update') . ': ' .  $this->i18n(!empty($conf['autoupdate']) ? 'on' : 'off'),
                 'callback_data' => "/autoupdate",
             ],
         ];
@@ -8188,11 +8190,11 @@ class Bot
         $pac    = $this->getPacConf();
         $data   = [
             [[
-                'text'          => $this->i18n($c['ad'] ? 'on' : 'off') . ' 853 AdguardHome DoT',
+                'text'          => $this->i18n(!empty($c['ad']) ? 'on' : 'off') . ' 853 AdguardHome DoT',
                 'callback_data' => "/hidePort ad",
             ]],
             [[
-                'text'          => $this->i18n($c['dnstt'] ? 'on' : 'off') . ' 53 dnstt',
+                'text'          => $this->i18n(!empty($c['dnstt']) ? 'on' : 'off') . ' 53 dnstt',
                 'callback_data' => "/hidePort dnstt",
             ]],
         ];
@@ -8552,8 +8554,8 @@ class Bot
         $x = $this->getXray();
         $h = $this->getHashBot();
 
-        $p['reality']['domain']      = $p['reality']['domain'] ?: 'yandex.ru';
-        $p['reality']['destination'] = $p['reality']['destination'] ?: $p['reality']['domain'] . ':443';
+        $p['reality']['domain']      = ($p['reality']['domain'] ?? null) ?: 'yandex.ru';
+        $p['reality']['destination'] = ($p['reality']['destination'] ?? null) ?: $p['reality']['domain'] . ':443';
         $p['transport'] = $transport;
 
         $p['reality']['domain']      = $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0] ?? $p['reality']['domain'];
@@ -8604,13 +8606,13 @@ class Bot
                 $x['inbounds'][0]['streamSettings'] = [
                     "network"         => "tcp",
                     "realitySettings" => [
-                        "dest"         => $p['reality']['destination'] ?: $x['inbounds'][0]['streamSettings']['realitySettings']['dest'],
+                        "dest"         => ($p['reality']['destination'] ?? null) ?: $x['inbounds'][0]['streamSettings']['realitySettings']['dest'],
                         "maxClientVer" => "",
                         "maxTimeDiff"  => 0,
                         "minClientVer" => "",
                         "privateKey"   => $this->secret('reality_privateKey'),
                         "serverNames"  => [
-                            $p['reality']['domain'] ?: $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]
+                            ($p['reality']['domain'] ?? null) ?: $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]
                         ],
                         "shortIds" => [$p['reality']['shortId']] ?: $x['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0],
                         "show"     => false,
@@ -8640,7 +8642,7 @@ class Bot
         }
 
         $this->setUpstreamDomain($transport == 'Reality'
-            ? ($p['reality']['domain'] ?: $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0])
+            ? (($p['reality']['domain'] ?? null) ?: $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0])
             : 't'
         );
         $this->setPacConf($p);
