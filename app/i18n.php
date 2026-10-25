@@ -1,6 +1,10 @@
 <?php
 
 $i = [
+    'allowed clients'      => [
+        'en' => 'allowed clients',
+        'ru' => 'разрешённые клиенты',
+    ],
     'days'                 => [
         'en' => 'days',
         'ru' => 'дней',
