@@ -1,0 +1,177 @@
+# the findings PHPStan had when it came in (phpstan.neon); after fixing
+# some: php phpstan.phar analyse --generate-baseline phpstan-baseline.neon
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/backup.php
+
+		-
+			message: '#^Method Bot\:\:routes\(\) invoked with 1 parameter, 0 required\.$#'
+			identifier: arguments.count
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Method Bot\:\:templateCopy\(\) invoked with 2 parameters, 1 required\.$#'
+			identifier: arguments.count
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$ban might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$dir might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$domains might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$email might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$emails might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$extra might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$ips might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$output might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$page might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$r might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$ret might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$ruleset might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$t might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$text might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$tmp might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$uid might not be defined\.$#'
+			identifier: variable.undefined
+			count: 11
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$uuids might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/bot.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/cron.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/index.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/init.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/iplimit.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/prepare.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/service.php
+
+		-
+			message: '#^Variable \$i might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/task.php
+
+		-
+			message: '#^Variable \$bot might not be defined\.$#'
+			identifier: variable.undefined
+			count: 15
+			path: app/webapp.php
+
+		-
+			message: '#^Variable \$path might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/webapp.php

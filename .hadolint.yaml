@@ -1,0 +1,12 @@
+# hadolint (CI: .github/workflows/checks.yml)
+ignored:
+  # apk packages are not pinned on purpose: every build takes the current
+  # security updates (apk upgrade), and Alpine drops old package versions,
+  # which would break pinned builds
+  - DL3018
+  # "cd" inside one RUN of a build step
+  - DL3003
+  # wget's progress output in the build log
+  - DL3047
+  # the pipes in RUN end in checks of their own (sha256sum -c, [ ... ])
+  - DL4006

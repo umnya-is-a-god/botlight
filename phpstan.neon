@@ -1,0 +1,8 @@
+# Static analysis (CI: .github/workflows/checks.yml). Level 1; what was
+# there when it came in is in the baseline, anything new fails the check.
+includes:
+    - phpstan-baseline.neon
+parameters:
+    level: 1
+    paths:
+        - app

@@ -1,0 +1,49 @@
+# Checks on every push and pull request: PHP syntax and static analysis,
+# shell scripts, Dockerfiles, the compose file. The tools are fixed
+# releases, checked by SHA-256.
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: php -l
+        run: |
+          php --version
+          for f in app/*.php; do php -l "$f" > /dev/null || exit 1; done
+      - name: PHPStan
+        run: |
+          curl -sSfLo phpstan.phar https://github.com/phpstan/phpstan/releases/download/2.3.2/phpstan.phar
+          echo "0ded687c44b1f9d0346f7f00fa505212b018efe532b2b18e3a72f6e16feb32be  phpstan.phar" | sha256sum -c -
+          php -d memory_limit=2G phpstan.phar analyse --no-progress
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        run: |
+          curl -sSfLo hadolint https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64
+          echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  hadolint" | sha256sum -c -
+          chmod +x hadolint
+          ./hadolint dockerfile/*.dockerfile
+      - name: docker compose config
+        run: |
+          # the files COMPOSE_FILE (.env) lists, made by make start on a server
+          touch docker-compose.ports.yml docker-compose.override.yml
+          docker compose config -q
