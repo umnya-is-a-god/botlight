@@ -1,7 +1,7 @@
 #!/bin/sh
 INTERFACE=$(route | grep '^default' | grep -o '[^ ]*$')
 ssh-keygen -A
-exec /usr/sbin/sshd -D -e "$@" &
+exec /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
 iptables -t nat -A POSTROUTING --destination 10.10.0.5 -j ACCEPT
 iptables -t nat -A POSTROUTING -o "$INTERFACE" -j MASQUERADE
 # VPN clients (vpns*) must not reach internal networks or this container,

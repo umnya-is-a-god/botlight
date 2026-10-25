@@ -14,12 +14,16 @@ for n in up ng ad xr oc wp dnstt service; do
     fi
     cp $k.pub /ssh/host_$n.pub
 done
-openssl req -newkey rsa:2048 -sha256 -nodes -x509 -days 365 -keyout /certs/self_private -out /certs/self_public  -subj "/C=NN/ST=N/L=N/O=N/CN=$IP"
+(umask 077 && openssl req -newkey rsa:2048 -sha256 -nodes -x509 -days 365 -keyout /certs/self_private -out /certs/self_public  -subj "/C=NN/ST=N/L=N/O=N/CN=$IP")
+# TLS private keys: root only (the web pools must not read them)
+chmod 600 /certs/self_private /certs/cert_private 2>/dev/null
+chmod 644 /certs/self_public 2>/dev/null
 if [ -s /ssh/key.pub ]; then
     # configs in place and in the current format before the other
     # containers start (they wait for php to be healthy)
     php prepare.php || echo "prepare.php failed, see /logs/php_error" >&2
-    php-fpm83 -R -D
+    # the web pools run as their own users (system/php-fpm.conf)
+    php-fpm83 -y /system/php-fpm.conf -c /system/php.ini &
     php init.php
 else
     exit 1;

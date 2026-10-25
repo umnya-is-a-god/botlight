@@ -24,24 +24,33 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+        mem_limit: 128m
+        pids_limit: 200
         build:
             context: dockerfile
             dockerfile: nginx.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             # a folder, not single files: the bot replaces them by rename
             - ./data/up:/etc/nginx/bot:ro
-            - ./scripts/start_upstream.sh:/start_upstream.sh:ro
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/up:/etc/ssh/pinned:ro
             - ./logs/:/logs/
         ports:
@@ -62,7 +71,7 @@ services:
             - path: ./override.env
               required: false
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_upstream.sh"]
+        command: ["/bin/sh", "/scripts/start_upstream.sh"]
         networks:
             default:
                 ipv4_address: 10.10.0.10
@@ -72,27 +81,36 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+        mem_limit: 256m
+        pids_limit: 300
         build:
             context: dockerfile
             dockerfile: nginx.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - ./data/ng:/etc/nginx/bot:ro
             - ./data/www:/www:ro
             # override.conf and location.conf (your own nginx includes)
             - ./config:/etc/nginx/user:ro
-            - ./scripts/start_ng.sh:/start_ng.sh:ro
             - ./certs/:/certs/:ro
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/ng:/etc/ssh/pinned:ro
             - ./logs/:/logs/
             - ./app/webapp:/app:ro
@@ -106,7 +124,7 @@ services:
             - path: ./override.env
               required: false
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_ng.sh"]
+        command: ["/bin/sh", "/scripts/start_ng.sh"]
         networks:
             default:
                 ipv4_address: 10.10.0.2
@@ -130,38 +148,47 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default: php-fpm starts its pools as other users, the
+        # bot sets file groups in ./data
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - KILL
+        mem_limit: 1g
+        pids_limit: 400
         build:
             dockerfile: dockerfile/php.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
-            - ./config/php.ini:/etc/php83/php.ini:ro
-            - ./config/php-fpm.conf:/etc/php83/php-fpm.d/www.conf:ro
-            - ./config/:/config/
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
+            # templates only: the working state is in ./data
+            - ./config/:/config/:ro
             - ./data:/data
             - ./certs/:/certs/
             - ./ssh:/ssh
             - ./sshpub:/sshpub
             - ./sshhost:/sshhost
-            - ./app:/app
+            # the bot's code: read-only, so a web pool cannot change it
+            # (override.php is loaded from here too)
+            - ./app:/app:ro
             - ./logs/:/logs/
-            - ./scripts/start_php.sh:/start_php.sh:ro
-            - ./scripts/check_file.sh:/check_file.sh:ro
-            - ./mirror:/mirror
-            - ./.env:/mirror/.env:ro
+            - ./mirror:/mirror:ro
             - ./update:/update
             - ./.git:/.git:ro
             - warp:/etc/warp
         environment:
             IP: ${IP}
             VER: ${VER}
+            # php.ini from ./system
+            PHPRC: /system
         env_file:
             - path: ./.env
               required: true # default
@@ -171,16 +198,14 @@ services:
         container_name: php-${VER}
         # restart: unless-stopped
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_php.sh"]
+        command: ["/bin/sh", "/scripts/start_php.sh"]
         working_dir: /app
         networks:
             default:
                 ipv4_address: 10.10.0.7
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
         logging: *default-logging
         healthcheck:
-            test: ["CMD", "/bin/sh", "/check_file.sh"]
+            test: ["CMD", "/bin/sh", "/scripts/check_file.sh"]
             interval: 5s
             timeout: 5s
             retries: 5
@@ -189,33 +214,43 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+        mem_limit: 512m
+        pids_limit: 300
         build:
             dockerfile: dockerfile/php.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
-            - ./config/php.ini:/etc/php83/php.ini:ro
-            - ./config/:/config/
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
+            - ./config/:/config/:ro
             - ./data:/data
             - ./certs/:/certs/
             - ./ssh:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/service:/etc/ssh/pinned:ro
-            - ./app:/app
+            - ./app:/app:ro
             - ./logs/:/logs/
             - ./update:/update
             - ./.git:/.git:ro
-            - ./scripts/start_service.sh:/start_service.sh:ro
         environment:
             IP: ${IP}
             VER: ${VER}
+            # php.ini from ./system
+            PHPRC: /system
         env_file:
             - path: ./.env
               required: true # default
@@ -225,7 +260,7 @@ services:
         container_name: service-${VER}
         # restart: unless-stopped
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_service.sh"]
+        command: ["/bin/sh", "/scripts/start_service.sh"]
         working_dir: /app
         networks:
             default:
@@ -244,29 +279,39 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+            - NET_ADMIN
+        mem_limit: 1g
+        pids_limit: 300
         build:
             dockerfile: dockerfile/adguard.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - type: volume
               target: /opt/adguardhome/work
               source: adguard
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/ad:/etc/ssh/pinned:ro
             # AdGuard's own config only (AdGuard rewrites it from its panel)
             - ./data/adguard:/config
             - ./certs/:/certs/:ro
             - ./logs/:/logs/
-            - ./scripts/start_ad.sh:/start_ad.sh:ro
         hostname: adguard
         container_name: adguard-${VER}
         depends_on:
@@ -281,33 +326,41 @@ services:
         networks:
             default:
                 ipv4_address: 10.10.0.5
-        cap_add:
-            - NET_ADMIN
-        entrypoint: ["/bin/sh", "/start_ad.sh"]
+        entrypoint: ["/bin/sh", "/scripts/start_ad.sh"]
         logging: *default-logging
     xr:
         image: botlight/vpnbot-xr:local
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+            - NET_ADMIN
+        mem_limit: 1g
+        pids_limit: 500
         build:
             dockerfile: dockerfile/xray.dockerfile
             args:
                 image: ${IMAGE}
                 xray_version: ${XRAY_VERSION}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/xr:/etc/ssh/pinned:ro
             - ./data/xray:/xray:ro
-            - ./scripts/start_xray.sh:/start_xray.sh:ro
             - ./logs:/logs
         hostname: xray
         container_name: xray-${VER}
@@ -320,10 +373,8 @@ services:
             - path: ./override.env
               required: false
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_xray.sh"]
-        # iptables: egress filter for client traffic (start_xray.sh)
-        cap_add:
-            - NET_ADMIN
+        command: ["/bin/sh", "/scripts/start_xray.sh"]
+        # iptables: egress filter for client traffic (start_xray.sh): NET_ADMIN
         networks:
             default:
                 ipv4_address: 10.10.0.9
@@ -335,23 +386,36 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+            - NET_ADMIN
+            - NET_RAW
+        mem_limit: 256m
+        pids_limit: 300
         build:
             dockerfile: dockerfile/ocserv.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/oc:/etc/ssh/pinned:ro
-            - ./data/ocserv:/etc/ocserv
+            # ocserv.conf and ocserv.passwd (the bot writes both)
+            - ./data/ocserv:/etc/ocserv:ro
             - ./certs:/certs:ro
-            - ./scripts/start_oc.sh:/start_oc.sh:ro
         hostname: ocserv
         container_name: openconnect-${VER}
         depends_on:
@@ -363,9 +427,7 @@ services:
             - path: ./override.env
               required: false
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_oc.sh"]
-        cap_add:
-            - NET_ADMIN
+        command: ["/bin/sh", "/scripts/start_oc.sh"]
         devices:
             - /dev/net/tun:/dev/net/tun
         networks:
@@ -377,31 +439,41 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+            - NET_ADMIN
+            - NET_RAW
+        mem_limit: 128m
+        pids_limit: 200
         build:
             dockerfile: dockerfile/wireguard.dockerfile
             args:
                 image: ${IMAGE}
-        cap_add:
-            - NET_ADMIN
         sysctls:
             - net.ipv4.conf.all.src_valid_mark=1
         devices:
             - /dev/net/tun:/dev/net/tun
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - ./sshpub:/ssh:ro
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/wp:/etc/ssh/pinned:ro
-            - ./scripts/start_wp.sh:/start_wp.sh:ro
             - warp:/etc/warp
         hostname: warp
         container_name: warp-${VER}
-        command: ["/bin/sh", "/start_wp.sh"]
+        command: ["/bin/sh", "/scripts/start_wp.sh"]
         depends_on:
             php:
                 condition: service_healthy
@@ -421,24 +493,34 @@ services:
         pull_policy: build
         security_opt:
             - no-new-privileges:true
+        # nothing by default, only what the container needs
         cap_drop:
-            - MKNOD
-            - SETFCAP
-            - SETPCAP
-            - FSETID
-            - NET_RAW
+            - ALL
+        cap_add:
+            # sshd (the bot's commands): privilege separation, its children
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            - SYS_CHROOT
+            - KILL
+            - NET_BIND_SERVICE
+            - NET_ADMIN
+        mem_limit: 128m
+        pids_limit: 200
         build:
             dockerfile: dockerfile/dnstt.dockerfile
             args:
                 image: ${IMAGE}
         volumes:
-            - ./config/.profile:/root/.ashrc:ro
+            # shell profile, sshd and php configs; start scripts (read-only)
+            - ./system:/system:ro
+            - ./scripts:/scripts:ro
             - ./sshpub:/ssh:ro
             - ./logs:/logs
-            - ./config/sshd_config:/etc/ssh/sshd_config:ro
             - ./sshhost/dnstt:/etc/ssh/pinned:ro
             - ./data/dnstt:/dnstt
-            - ./scripts/start_dnstt.sh:/start_dnstt.sh:ro
         hostname: dnstt
         container_name: dnstt-${VER}
         depends_on:
@@ -450,10 +532,8 @@ services:
             - path: ./override.env
               required: false
         stop_grace_period: 1s
-        command: ["/bin/sh", "/start_dnstt.sh"]
-        # iptables: keeps tunnel users out of internal networks
-        cap_add:
-            - NET_ADMIN
+        command: ["/bin/sh", "/scripts/start_dnstt.sh"]
+        # iptables: keeps tunnel users out of internal networks: NET_ADMIN
         networks:
             default:
                 ipv4_address: 10.10.0.16

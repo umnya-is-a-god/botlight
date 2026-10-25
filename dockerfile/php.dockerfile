@@ -11,7 +11,9 @@ ARG singbox_sha256=41fc81fd041134d4d7d850a928d7d2cde17a7d6563953f406b22d32a68bfa
 ARG mihomo_version=1.19.32
 ARG mihomo_sha256=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10
 # security updates of the base image's packages (ca-certificates, openssl, ...)
-# on every build, not only what the base image was pulled with
+# on every build, not only what the base image was pulled with.
+# botweb/botadmin: users of the web pools (system/php-fpm.conf); their ids
+# are the file groups in ./data (app/storage.php)
 RUN apk upgrade --no-cache \
     && apk add --no-cache --update php83 \
     php83-fpm \
@@ -35,6 +37,13 @@ RUN apk upgrade --no-cache \
     git \
     && ln -sf /usr/bin/php83 /usr/bin/php \
     && mkdir /root/.ssh \
+    && addgroup -g 10080 botweb \
+    && adduser -D -H -h /nonexistent -s /sbin/nologin -u 10080 -G botweb botweb \
+    && addgroup -g 10082 botsecret \
+    && addgroup -g 10081 botadmin \
+    && adduser -D -H -h /nonexistent -s /sbin/nologin -u 10081 -G botadmin botadmin \
+    && addgroup botadmin botweb \
+    && addgroup botadmin botsecret \
     && mkdir /tmp/dl && cd /tmp/dl \
     && wget -O dnslookup.tar.gz https://github.com/ameshkov/dnslookup/releases/download/v$dnslookup_version/dnslookup-linux-amd64-v$dnslookup_version.tar.gz \
     && echo "$dnslookup_sha256  dnslookup.tar.gz" | sha256sum -c - \

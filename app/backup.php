@@ -6,9 +6,6 @@ require __DIR__ . '/bot.php';
 require __DIR__ . '/storage.php';
 $c = bot_config();
 require __DIR__ . '/i18n.php';
-if ($c['debug']) {
-    require __DIR__ . '/debug.php';
-}
 
 $bot = new Bot($c['key'], $i);
 echo $bot->export();

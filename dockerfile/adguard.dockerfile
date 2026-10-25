@@ -4,4 +4,4 @@ FROM adguard/adguardhome
 RUN apk upgrade --no-cache \
     && apk add --no-cache --update openssh \
     && mkdir /root/.ssh
-ENV ENV="/root/.ashrc"
+ENV ENV="/system/profile"

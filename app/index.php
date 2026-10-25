@@ -2,23 +2,27 @@
 
 require __DIR__ . '/timezone.php';
 require __DIR__ . '/storage.php';
-$c = bot_config();
-if ($c['debug']) {
-    require __DIR__ . '/debug.php';
-}
 require __DIR__ . '/bot.php';
 require __DIR__ . '/i18n.php';
 if (file_exists(__DIR__ . '/override.php')) {
     include __DIR__ . '/override.php';
 }
-$bot  = new Bot($c['key'], $i);
+// The web pools (system/php-fpm.conf) run without the bot token and read
+// only what they need: the public pool answers the subscriptions, the
+// admin pool the Mini App (Telegram sign-in on every request)
+$pool = getenv('BOT_POOL') === 'admin' ? 'admin' : 'public';
+$bot  = new Bot('', $i, true);
+if ($bot->debugOn()) {
+    require __DIR__ . '/debug.php';
+}
 $hash = $bot->getHashBot();
 
 // Telegram Mini App initData check: valid signature, issued for an admin,
 // not older than a day. Anything that changes or reveals bot settings
 // requires it; the path hash alone is known to every subscriber.
 $webapp = false;
-if (!empty($_GET['hash']) && is_string($_GET['hash'])) {
+if ($pool === 'admin' && !empty($_GET['hash']) && is_string($_GET['hash'])) {
+    $ws = $bot->webSecrets();
     $t = $_GET;
     unset($t['hash']);
     ksort($t);
@@ -31,12 +35,13 @@ if (!empty($_GET['hash']) && is_string($_GET['hash'])) {
         $s[] = "$k=$v";
     }
     if ($s !== false) {
-        $sk   = hash_hmac('sha256', $c['key'], 'WebAppData', true);
+        $sk   = (string) hex2bin((string) ($ws['initdata_key'] ?? ''));
         $user = json_decode($_GET['user'] ?? '', true);
-        $webapp = hash_equals(hash_hmac('sha256', implode("\n", $s), $sk), $_GET['hash'])
+        $webapp = $sk !== ''
+            && hash_equals(hash_hmac('sha256', implode("\n", $s), $sk), $_GET['hash'])
             && (time() - (int) ($_GET['auth_date'] ?? 0)) < 86400
             && !empty($user['id'])
-            && in_array($user['id'], (array) ($c['admin'] ?? []));
+            && in_array((int) $user['id'], array_map('intval', (array) ($ws['admins'] ?? [])), true);
     }
 }
 $templateTypes = ['sing', 'clash'];
@@ -60,8 +65,8 @@ switch (true) {
             break;
         }
         $t = $te !== '' && $te !== 'origin'
-            ? ($bot->getPacConf()["{$ty}templates"][$te] ?? null)
-            : json_decode(file_get_contents("/config/$ty.json"), true);
+            ? ($bot->getTemplates($ty)[$te] ?? null)
+            : $bot->originTemplate($ty);
         header('Content-Type: application/json');
         echo json_encode($t ?? new stdClass(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         break;
@@ -72,12 +77,12 @@ switch (true) {
         echo "/adguard$hash/";
         break;
 
-    case preg_match('~^' . preg_quote("/pac$hash/sub") . '~', $_SERVER['REQUEST_URI']) && file_exists(__DIR__ . '/subscription.php'):
+    case $pool === 'public' && preg_match('~^' . preg_quote("/pac$hash/sub") . '~', $_SERVER['REQUEST_URI']) && file_exists(__DIR__ . '/subscription.php'):
         $bot->sub();
         exit;
 
     // subs & pac
-    case preg_match('~^' . preg_quote("/pac$hash") . '~', $_SERVER['REQUEST_URI']):
+    case $pool === 'public' && preg_match('~^' . preg_quote("/pac$hash") . '~', $_SERVER['REQUEST_URI']):
         // sing-box import links carry their parameters in the path
         $part = explode('/', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))[2] ?? '';
         if ($part !== '' && is_array($t = @unserialize(base64_decode($part, true), ['allowed_classes' => false]))) {

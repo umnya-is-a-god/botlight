@@ -20,4 +20,4 @@ RUN apk upgrade --no-cache \
     && mv xray /usr/bin/ \
     && rm Xray-linux-64.zip Xray-linux-64.zip.dgst \
     && chmod +x /usr/bin/xray
-ENV ENV="/root/.ashrc"
+ENV ENV="/system/profile"

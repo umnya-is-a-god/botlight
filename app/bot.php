@@ -34,10 +34,13 @@ class Bot
     public $time_warp_status;
     public $admin;
     public $ports;
+    // true in the web pools (index.php): no bot token, read-only views
+    public $web;
 
-    public function __construct($key, $i18n)
+    public function __construct($key, $i18n, $web = false)
     {
         $api = getenv('TELEGRAM_API') ?: 'api.telegram.org';
+        $this->web      = $web;
         $this->key      = $key;
         $this->api      = "https://$api/bot$key/";
         $this->file     = "https://$api/file/bot$key/";
@@ -133,6 +136,7 @@ class Bot
                 $c['admin_names'][$from] = $first;
             }
             bot_config_save($c);
+            $this->writeWebSecrets();
         } elseif (!is_array($c['admin'])) {
             $c['admin'] = [$c['admin']];
             bot_config_save($c);
@@ -145,7 +149,7 @@ class Bot
     public function callbackCheck()
     {
         if (empty($this->callback) && !empty($this->input['callback_id'])) {
-            $this->answer($this->input['callback_id'], !empty($GLOBALS['debug']) ? $this->input['callback'] : false);
+            $this->answer($this->input['callback_id'], $this->debugOn() ? $this->input['callback'] : false);
         }
     }
 
@@ -633,11 +637,63 @@ class Bot
      */
     public function prepare()
     {
+        $this->dataPermissions();
+        $pac = $this->getPacConf();
+        if (isset($pac['singtemplates']) || isset($pac['clashtemplates'])) {
+            // templates of earlier versions, kept in the settings
+            $this->importPac($pac);
+        }
         $this->getHashBot();
         $this->getHashSubdomain('oc');
+        $this->saveXrayView($this->getXray());
+        $this->writeWebSecrets();
         bot_write(BOT_DATA . '/up/upstream.conf', $this->upstreamConf(bot_read(BOT_DATA . '/up/upstream.conf')));
         $this->cloakNginx(false);
         $this->writeWarpKey();
+    }
+
+    /**
+     * Who may read what in /data (the web pools run as botweb/botadmin,
+     * dockerfile/php.dockerfile). Everything else stays root only.
+     */
+    public function dataPermissions()
+    {
+        foreach (['/web' => 0750, '/templates' => 02770, '/secrets' => 0750] as $d => $mode) {
+            if (!is_dir(BOT_DATA . $d)) {
+                mkdir(BOT_DATA . $d, $mode);
+            }
+        }
+        foreach ([
+            ''           => [0750, BOT_GID_WEB],
+            '/web'       => [0750, BOT_GID_WEB],
+            '/templates' => [02770, BOT_GID_WEB],
+            '/secrets'   => [0750, BOT_GID_SECRET],
+            '/pac.json'  => [0640, BOT_GID_WEB],
+            '/www'       => [0755, null],
+        ] as $f => [$mode, $gid]) {
+            if (file_exists(BOT_DATA . $f)) {
+                chmod(BOT_DATA . $f, $mode);
+                if ($gid !== null) {
+                    chgrp(BOT_DATA . $f, $gid);
+                }
+            }
+        }
+        foreach ([
+            '/xray.stats'         => [0640, BOT_GID_WEB],
+            '/www/override.html'  => [0644, null],
+            '/config.php'         => [0600, 0],
+            '/templates/sing.json'         => [0660, BOT_GID_WEB],
+            '/templates/clash.json'        => [0660, BOT_GID_WEB],
+            '/templates/sing.origin.json'  => [0660, BOT_GID_WEB],
+            '/templates/clash.origin.json' => [0660, BOT_GID_WEB],
+        ] as $f => [$mode, $gid]) {
+            if (is_file(BOT_DATA . $f)) {
+                chmod(BOT_DATA . $f, $mode);
+                if ($gid !== null) {
+                    chgrp(BOT_DATA . $f, $gid);
+                }
+            }
+        }
     }
 
     // upstream.conf (nginx stream in up) in the current format
@@ -875,10 +931,7 @@ class Bot
         $pac = $this->getPacConf();
         $pac['ocserv'] = $pass;
         $this->setPacConf($pac);
-        $clients = $this->getClientsOc();
-        foreach ($clients as $k => $v) {
-            $this->ssh('echo ' . escapeshellarg($pass) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($v), 'oc');
-        }
+        $this->ocPasswd(array_fill_keys($this->getClientsOc(), $pass));
         $this->restartOcserv(bot_read(BOT_DATA . '/ocserv/ocserv.conf'));
         $this->menu('oc');
     }
@@ -1443,7 +1496,7 @@ class Bot
     {
         $conf = [
             'ad'  => $this->getAdguard(),
-            'pac' => $this->getPacConf(),
+            'pac' => $this->exportPac(),
             'ssl' => file_exists('/certs/cert_private') && preg_match('~BEGIN PRIVATE KEY~', file_get_contents('/certs/cert_private')) ? [
                 'private' => file_get_contents('/certs/cert_private'),
                 'public'  => file_get_contents('/certs/cert_public'),
@@ -1458,6 +1511,41 @@ class Bot
             'xraystats'     => $this->getXrayStats(),
         ];
         return json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * The settings as a backup carries them (the format of earlier
+     * versions): with the templates, which are kept apart now.
+     */
+    public function exportPac(): array
+    {
+        $pac = $this->getPacConf();
+        foreach (['sing', 'clash'] as $type) {
+            if ($t = $this->getTemplates($type)) {
+                $pac["{$type}templates"] = $t;
+            }
+            $f = BOT_DATA . "/templates/$type.origin.json";
+            if (is_file($f)) {
+                $pac["{$type}origin"] = bot_read_json($f);
+            }
+        }
+        return $pac;
+    }
+
+    // a backup's settings (or the old pac.json) into their places
+    public function importPac(array $pac)
+    {
+        foreach (['sing', 'clash'] as $type) {
+            if (isset($pac["{$type}templates"])) {
+                $this->saveTemplates($type, is_array($pac["{$type}templates"]) ? $pac["{$type}templates"] : []);
+            }
+            if (!empty($pac["{$type}origin"]) && is_array($pac["{$type}origin"])) {
+                bot_write_json(BOT_DATA . "/templates/$type.origin.json", $pac["{$type}origin"], 0660, BOT_GID_WEB);
+            }
+            unset($pac["{$type}templates"], $pac["{$type}origin"]);
+        }
+        $this->setPacConf($pac);
+        $this->writeWarpKey();
     }
 
     public function import()
@@ -1540,7 +1628,7 @@ class Bot
             if (!empty($json['pac'])) {
                 $out[] = 'update pac';
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-                $this->setPacConf($json['pac']);
+                $this->importPac($json['pac']);
             }
             // ad
             if (!empty($json['ad'])) {
@@ -1606,14 +1694,15 @@ class Bot
     public function qrXray($i, $s = false)
     {
         $link    = $this->linkXray($i, $s);
-        $qr_file = __DIR__ . "/qr/xray.png";
+        // /app is read-only; a name of its own for each picture
+        $qr_file = tempnam(sys_get_temp_dir(), 'qr');
         exec('qrencode -t png -o ' . escapeshellarg($qr_file) . ' ' . escapeshellarg($link));
         $r = $this->sendPhoto(
             $this->input['chat'],
-            curl_file_create($qr_file),
+            curl_file_create($qr_file, 'image/png', 'qr.png'),
             "<code>$link</code>"
         );
-        unlink($qr_file);
+        @unlink($qr_file);
     }
 
     public function upload($name, $code, $chat = false)
@@ -1986,6 +2075,7 @@ class Bot
     public function saveAdminConfig(array $c)
     {
         bot_config_save($c);
+        $this->writeWebSecrets();
     }
 
     // the name; the id until a name is set (admins added before names)
@@ -4070,8 +4160,11 @@ class Bot
             return $this->ocUser($i);
         }
         $pac = $this->getPacConf();
-        $this->ssh('echo ' . escapeshellarg((string) ($pac['ocserv'] ?? '')) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($name), 'oc');
-        $this->ssh('ocpasswd -c /etc/ocserv/ocserv.passwd -d ' . escapeshellarg($clients[$i]), 'oc');
+        if ((string) ($pac['ocserv'] ?? '') === '') {
+            $this->send($this->input['chat'], 'set the OpenConnect password first');
+            return $this->ocUser($i);
+        }
+        $this->ocPasswd([$name => $pac['ocserv']], [$clients[$i]]);
         $k = array_search($name, $this->getClientsOc(), true);
         return $k === false ? $this->menu('oc') : $this->ocUser((int) $k);
     }
@@ -4081,7 +4174,7 @@ class Bot
         $clients = $this->getClientsOc();
         foreach ($clients as $k => $v) {
             if ($i == $k) {
-                $this->ssh('ocpasswd -c /etc/ocserv/ocserv.passwd -d ' . escapeshellarg($v), 'oc');
+                $this->ocPasswd([], [$v]);
                 break;
             }
         }
@@ -4103,6 +4196,34 @@ class Bot
         $this->xray();
     }
 
+    /**
+     * ocserv.passwd ("user:group:hash" lines), written here and not by
+     * ocpasswd in the oc container, which gets its configs read-only. The
+     * hash is SHA-256 crypt, as ocpasswd makes it. ocserv reads the file on
+     * every login. $set: user => password, $delete: users.
+     */
+    public function ocPasswd(array $set = [], array $delete = [])
+    {
+        $f = BOT_DATA . '/ocserv/ocserv.passwd';
+        bot_lock($f, function () use ($f, $set, $delete) {
+            $lines = [];
+            foreach (explode("\n", bot_read($f)) as $l) {
+                if (($l = trim($l)) !== '') {
+                    $lines[explode(':', $l)[0]] = $l;
+                }
+            }
+            foreach ($delete as $u) {
+                unset($lines[$u]);
+            }
+            foreach ($set as $u => $p) {
+                $group = explode(':', $lines[$u] ?? '')[1] ?? '*';
+                $salt  = strtr(substr(base64_encode(random_bytes(12)), 0, 16), '+', '.');
+                $lines[$u] = "$u:" . ($group !== '' ? $group : '*') . ':' . crypt((string) $p, '$5$' . $salt . '$');
+            }
+            bot_write($f, $lines ? implode("\n", $lines) . "\n" : '');
+        });
+    }
+
     public function getClientsOc()
     {
         $users = array_filter(explode("\n", bot_read(BOT_DATA . '/ocserv/ocserv.passwd')), fn ($e) => !empty($e));
@@ -4117,7 +4238,12 @@ class Bot
             return;
         }
         $pac = $this->getPacConf();
-        $this->ssh('echo ' . escapeshellarg($pac['ocserv']) . ' | ocpasswd -c /etc/ocserv/ocserv.passwd ' . escapeshellarg($user), 'oc');
+        if ((string) ($pac['ocserv'] ?? '') === '') {
+            // a user without the shared password could log in with an empty one
+            $this->send($this->input['chat'], 'set the OpenConnect password first');
+            return $this->menu('oc');
+        }
+        $this->ocPasswd([$user => $pac['ocserv']]);
         $this->menu('oc');
     }
 
@@ -4335,10 +4461,33 @@ class Bot
             $this->send($this->input['chat'], 'wrong format');
             return;
         }
-        $pac = $this->getPacConf();
-        $pac["{$type}templates"][$name] = $json;
-        $this->setPacConf($pac);
+        $t = $this->getTemplates($type);
+        $t[$name] = $json;
+        $this->saveTemplates($type, $t);
         $this->templates($type);
+    }
+
+    /**
+     * Named sing-box / mihomo templates (/data/templates/<type>.json). The
+     * folder belongs to the web pools' group: the Mini App editor saves
+     * into it without access to the other settings.
+     */
+    public function getTemplates(string $type): array
+    {
+        $f = BOT_DATA . "/templates/$type.json";
+        return is_file($f) ? bot_read_json($f) : [];
+    }
+
+    public function saveTemplates(string $type, array $t)
+    {
+        bot_write_json(BOT_DATA . "/templates/$type.json", $t, 0660, BOT_GID_WEB);
+    }
+
+    // the built-in template: as edited in the Mini App, else config/<type>.json
+    public function originTemplate(string $type): array
+    {
+        $f = BOT_DATA . "/templates/$type.origin.json";
+        return bot_read_json(is_file($f) ? $f : "/config/$type.json");
     }
 
     public function saveTemplate($name, $type, $json)
@@ -4355,17 +4504,19 @@ class Bot
                 'message' => 'wrong format',
             ];
         }
-        $pac = $this->getPacConf();
         switch ($name) {
             case 'origin':
-                file_put_contents("/config/$type.json", json_encode(json_decode($json, true), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                bot_write_json(BOT_DATA . "/templates/$type.origin.json", json_decode($json, true), 0660, BOT_GID_WEB);
                 break;
 
             default:
-                $pac["{$type}templates"][$name] = json_decode($json, true);
+                bot_lock(BOT_DATA . "/templates/$type.json", function () use ($type, $name, $json) {
+                    $t = $this->getTemplates($type);
+                    $t[$name] = json_decode($json, true);
+                    $this->saveTemplates($type, $t);
+                });
                 break;
         }
-        $this->setPacConf($pac);
         return [
             'status' => true,
         ];
@@ -4373,9 +4524,9 @@ class Bot
 
     public function delTemplate($type, $name)
     {
-        $pac = $this->getPacConf();
-        unset($pac["{$type}templates"][base64_decode($name)]);
-        $this->setPacConf($pac);
+        $t = $this->getTemplates($type);
+        unset($t[base64_decode((string) $name)]);
+        $this->saveTemplates($type, $t);
         $this->templates($type);
     }
 
@@ -4385,22 +4536,25 @@ class Bot
             $this->send($this->input['chat'], 'name: up to 24 bytes, letters, digits, space . _ -, not "origin"');
             return $this->templates($type);
         }
-        $pac  = $this->getPacConf();
-        $pac["{$type}templates"][$name] = json_decode(file_get_contents("/config/$type.json"), true);
-        $this->setPacConf($pac);
+        $t = $this->getTemplates($type);
+        $t[$name] = $this->originTemplate($type);
+        $this->saveTemplates($type, $t);
         $this->templates($type);
     }
 
     public function downloadOrigin($type)
     {
-        $f = new \CURLFile("/config/$type.json", 'application/json', 'origin.json');
+        $f = new \CURLStringFile(json_encode($this->originTemplate($type), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'origin.json', 'application/json');
         $this->sendFile($this->input['chat'], $f);
     }
 
     public function downloadTemplate($type, $name)
     {
-        $pac = $this->getPacConf();
-        $f = new \CURLStringFile(json_encode($pac["{$type}templates"][base64_decode($name)], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), base64_decode($name) . '.json', 'application/json');
+        $t = $this->getTemplates($type)[base64_decode((string) $name)] ?? null;
+        if (!is_array($t)) {
+            return $this->templates($type);
+        }
+        $f = new \CURLStringFile(json_encode($t, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), base64_decode($name) . '.json', 'application/json');
         $this->sendFile($this->input['chat'], $f);
     }
 
@@ -4419,6 +4573,7 @@ class Bot
     public function templates($type)
     {
         $pac    = $this->getPacConf();
+        $pac["{$type}templates"] = $this->getTemplates($type);
         $domain = $this->getDomain();
         $hash   = $this->getHashBot();
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . $this->i18n("$type templates");
@@ -5015,6 +5170,7 @@ class Bot
     {
         $c         = $this->getXray();
         $pac       = $this->getPacConf();
+        $pac["{$type}templates"] = $this->getTemplates($type);
         $text[]    = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . " -> {$c['inbounds'][0]['settings']['clients'][$i]['email']}\n";
         $templates = $pac["{$type}templates"];
         $data[]    = [
@@ -5060,6 +5216,8 @@ class Bot
             return $this->xray();
         }
         $pac    = $this->getPacConf();
+        $pac['singtemplates']  = $this->getTemplates('sing');
+        $pac['clashtemplates'] = $this->getTemplates('clash');
         $domain = $this->getDomain($pac['transport'] != 'Reality');
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
@@ -5237,6 +5395,7 @@ class Bot
                 exit;
         }
         $pac    = $this->getPacConf();
+        $pac["{$type}templates"] = $this->getTemplates($type);
         if ($type == 'sing' && ($pac['transport'] ?? '') == 'xhttp') {
             // sing-box has no XHTTP transport: an error, not a config it rejects
             header('Content-Type: text/plain', true, 404);
@@ -5293,7 +5452,7 @@ class Bot
             case empty($template) && empty($pac["default{$type}template"]):
             case empty($template) && empty($pac["{$type}templates"][base64_decode($pac["default{$type}template"])]):
             case !empty($template) && empty($pac["{$type}templates"][$template]):
-                $c = json_decode(file_get_contents("/config/{$type}.json"), true);
+                $c = $this->originTemplate($type);
                 break;
             case !empty($template):
                 $c = $pac["{$type}templates"][$template];
@@ -5904,13 +6063,26 @@ class Bot
 
     public function getXray()
     {
-        return bot_read_json(BOT_DATA . '/xray/xray.json');
+        return bot_read_json(BOT_DATA . ($this->web ? '/web/xray.json' : '/xray/xray.json'));
     }
 
-    // the Xray config as the bot keeps it; Xray reads it as /xray/xray.json
+    /**
+     * The Xray config as the bot keeps it (Xray reads it as /xray/xray.json)
+     * and its copy for the web pools, which build the subscriptions from
+     * it: without the Reality private key.
+     */
     public function saveXray(array $c)
     {
         bot_write_json(BOT_DATA . '/xray/xray.json', $c);
+        $this->saveXrayView($c);
+    }
+
+    public function saveXrayView(array $c)
+    {
+        foreach ($c['inbounds'] ?? [] as $k => $v) {
+            unset($c['inbounds'][$k]['streamSettings']['realitySettings']['privateKey']);
+        }
+        bot_write_json(BOT_DATA . '/web/xray.json', $c, 0640, BOT_GID_WEB);
     }
 
     public function setUpstreamDomain($domain)
@@ -5943,7 +6115,30 @@ class Bot
      */
     public function getAdguardCookie(): string
     {
+        if ($this->web) {
+            return (string) ($this->webSecrets()['adguard_cookie'] ?? '');
+        }
         return hash_hmac('sha256', 'adguard-cookie', $this->key);
+    }
+
+    /**
+     * What the Mini App pool needs instead of the bot token: the key that
+     * checks Telegram's initData signature (it cannot call the Bot API),
+     * the admins and the AdGuard cookie. /data/secrets: botadmin only.
+     */
+    public function writeWebSecrets()
+    {
+        $c = $this->adminConfig();
+        bot_write_json(BOT_DATA . '/secrets/web.json', [
+            'initdata_key'   => hash_hmac('sha256', $this->key, 'WebAppData'),
+            'admins'         => $c['admin'],
+            'adguard_cookie' => $this->getAdguardCookie(),
+        ], 0640, BOT_GID_SECRET);
+    }
+
+    public function webSecrets(): array
+    {
+        return bot_read_json(BOT_DATA . '/secrets/web.json');
     }
 
     public function getHashBot($notset = false)
@@ -5954,6 +6149,9 @@ class Bot
         }
         // secret path part for /pac, /webapp, /adguard, /ws: 128 bits, derived
         // from the bot token, stored on first use
+        if ($this->web) {
+            throw new RuntimeException('no path hash in the settings');
+        }
         $p['hashbot'] = substr(hash_hmac('sha256', 'path', $this->key), 0, 32);
         if (empty($notset)) {
             $this->setPacConf($p);
@@ -6070,6 +6268,9 @@ class Bot
         $p = $this->getPacConf();
         if (isset($p["{$subdomain}_domain"])) {
             return $p["{$subdomain}_domain"];
+        }
+        if ($this->web) {
+            return '';
         }
         $p["{$subdomain}_domain"] = substr(hash('sha256', "$subdomain{$this->key}"), 0, 8);
         $this->setPacConf($p);
@@ -6971,19 +7172,37 @@ class Bot
         $this->logs();
     }
 
+    // the switch lives in the settings: the web pools cannot read config.php
     public function debug()
     {
-        $c = $this->config();
-        $c['debug'] = empty($c['debug']);
-        bot_config_save($c);
+        $p = $this->getPacConf();
+        if ($this->debugOn()) {
+            unset($p['debug_until']);
+        } else {
+            $p['debug_until'] = time() + 1800;
+        }
+        $this->setPacConf($p);
         $this->menu('config');
     }
 
+    public function debugOn(): bool
+    {
+        try {
+            return (int) ($this->getPacConf()['debug_until'] ?? 0) > time();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * The certificate nginx serves the domain with: letsencrypt, self, or
+     * '' (none: links use http). Taken from the settings nginx.conf is made
+     * from (nginxConf()), so the web pools need no access to nginx.conf.
+     */
     public function nginxGetTypeCert()
     {
-        $conf = @file_get_contents(BOT_DATA . '/ng/nginx.conf');
-        preg_match("/#~([^\s]+)/", $conf, $m);
-        return $m[1];
+        $p = $this->getPacConf();
+        return !empty($p['domain']) && $this->validHost($p['domain']) && !empty($p['letsencrypt']) ? (string) $p['letsencrypt'] : '';
     }
 
     public function autoupdate()
@@ -7044,7 +7263,7 @@ class Bot
             fclose($s);
             ssh2_disconnect($c);
         } catch (Exception | Error $e) {
-            if (!empty($GLOBALS['debug'])) {
+            if ($this->debugOn()) {
                 $this->send($this->input['chat'], $e->getMessage(), $this->input['message_id']);
             }
         }

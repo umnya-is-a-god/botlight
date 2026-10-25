@@ -28,7 +28,9 @@ function bot_lock(string $path, callable $fn)
     if (!empty($held[$lock])) {
         return $fn();
     }
-    $l = @fopen($lock, 'c');
+    // read-only is enough for flock: a web pool may not be able to write
+    // a lock file that root made
+    $l = @fopen($lock, 'c') ?: @fopen($lock, 'r');
     if ($l === false) {
         throw new RuntimeException("cannot open the lock $lock");
     }

@@ -15,4 +15,4 @@ RUN apk upgrade --no-cache \
     && apk add --no-cache openssh iptables \
     && mkdir -p /root/.ssh \
     && adduser -D -u 10001 -s /bin/sh vpnbot
-ENV ENV="/root/.ashrc"
+ENV ENV="/system/profile"

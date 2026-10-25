@@ -89,6 +89,18 @@ for p in $pairs; do
     fi
 done
 rmdir config/dnstt 2> /dev/null || true
+
+# the built-in sing-box/mihomo template, if it was edited (Mini App): it
+# was kept in config/ and lives in data/templates now
+mkdir -p "$D/templates"
+for t in sing clash; do
+    if [ ! -e "$D/templates/$t.origin.json" ] && ! git diff --quiet -- "config/$t.json" 2> /dev/null; then
+        tar -czf "$D/backup/pre-data-$t-$(date +%Y%m%d-%H%M%S).tar.gz" "config/$t.json" \
+            && cp "config/$t.json" "$D/templates/$t.origin.json" \
+            && git checkout -q -- "config/$t.json" \
+            && echo "migrate_data: config/$t.json -> $D/templates/$t.origin.json"
+    fi
+done
 # the bot token: root only
 [ -f "$D/config.php" ] && chmod 600 "$D/config.php"
 

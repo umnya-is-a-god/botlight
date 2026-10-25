@@ -6,4 +6,4 @@ RUN apk upgrade --no-cache \
     && apk add --no-cache nginx-mod-stream openssh \
     && mkdir /root/.ssh \
     && mkdir /var/cache/nginx
-ENV ENV="/root/.ashrc"
+ENV ENV="/system/profile"

@@ -1,6 +1,6 @@
 #!/bin/sh
 ssh-keygen -A
-/usr/sbin/sshd -D -e "$@" &
+/usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
 
 # Egress filter: Xray clients must not reach the server's internal networks
 # or the host. Xray's routing already blocks private destination IPs; this
