@@ -52,6 +52,8 @@ class Bot
         $this->mtu      = 1350;
         $this->limit    = $this->getPacConf()['limitpage'] ?: 5;
         $this->adguard  = BOT_DATA . '/adguard/AdGuardHome.yaml';
+        // a plain settings backup that versions before ./data left for
+        // their update (read once by selfUpdate, never written now)
         $this->update   = '/update/json';
         $this->logs = [
             'nginx_default_access',
@@ -282,8 +284,8 @@ class Bot
             case preg_match('~^/changelog$~', $this->input['callback'], $m):
                 $this->changelog();
                 break;
-            case preg_match('~^/applyupdatebot$~', $this->input['callback'], $m):
-                $this->applyupdatebot();
+            case preg_match('~^/applyupdatebot( yes)?$~', $this->input['callback'], $m):
+                $this->applyupdatebot(!empty($m[1]));
                 break;
             case preg_match('~^/restart$~', $this->input['callback'], $m):
                 $this->restart();
@@ -297,8 +299,8 @@ class Bot
             case preg_match('~^/branches$~', $this->input['callback'], $m):
                 $this->branches();
                 break;
-            case preg_match('~^/changeBranch (\d+)$~', $this->input['callback'], $m):
-                $this->changeBranch($m[1]);
+            case preg_match('~^/changeBranch ([0-9a-f]{8})( yes)?$~', $this->input['callback'], $m):
+                $this->changeBranch($m[1], !empty($m[2]));
                 break;
             case preg_match('~^/getMirror$~', $this->input['callback'], $m):
                 $this->getMirror();
@@ -661,6 +663,12 @@ class Bot
         foreach (['/web' => 0750, '/templates' => 02770, '/secrets' => 0750] as $d => $mode) {
             if (!is_dir(BOT_DATA . $d)) {
                 mkdir(BOT_DATA . $d, $mode);
+            }
+        }
+        // root only (the containers that mount them run as root)
+        foreach (['/xray', '/adguard', '/ocserv', '/up', '/ng', '/dnstt', '/backup'] as $d) {
+            if (is_dir(BOT_DATA . $d)) {
+                chmod(BOT_DATA . $d, 0700);
             }
         }
         foreach ([
@@ -1326,15 +1334,12 @@ class Bot
         return $plain === false ? null : $plain;
     }
 
-    // $file: also keep a plain copy there (local, for the bot's own update)
-    public function sendBackup($file = false)
+    // the encrypted backup to the main admin
+    public function sendBackup()
     {
         $c = $this->config();
         $conf = $this->getPacConf();
         $json = $this->export();
-        if (!empty($file)) {
-            file_put_contents($file, $json);
-        }
         if (empty($conf['backup_password'])) {
             $this->send($c['admin'][0], 'backup not sent: set a backup password in Settings, backups are only sent encrypted');
             return;
@@ -1376,21 +1381,65 @@ class Bot
     }
 
     /**
-     * New commits in the bot's own repository (origin, e.g. botlight).
-     * The host side update/update.sh runs "git fetch" every hour, so here
-     * only the already fetched refs are read.
+     * New commits in the bot's own repository (origin, e.g. botlight), up to
+     * $to (the tracked branch, or a tag). The host side scripts/update.sh
+     * runs "git fetch" every hour, so here only the fetched refs are read.
      */
-    public function newCommits($limit = 10): array
+    public function newCommits($limit = 10, $to = '@{u}'): array
     {
-        exec('git -C / log --no-merges --format=%s -n ' . (int) $limit . ' HEAD..@{u} 2>/dev/null', $out);
+        exec('git -C / log --no-merges --format=%s -n ' . (int) $limit . ' ' . escapeshellarg("HEAD..$to") . ' 2>/dev/null', $out);
         return array_values(array_filter(array_map('trim', $out)));
+    }
+
+    /**
+     * The newest release tag after the running version on the tracked
+     * branch: what the autoupdate installs (scripts/update.sh checks its
+     * signature before anything stops).
+     */
+    public function newTag(): string
+    {
+        exec('git -C / tag --contains HEAD --merged @{u} --sort=-v:refname 2>/dev/null', $tags);
+        exec('git -C / tag --points-at HEAD 2>/dev/null', $here);
+        foreach ($tags as $t) {
+            if (preg_match('~^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$~D', $t = trim($t)) && !in_array($t, array_map('trim', $here), true)) {
+                return $t;
+            }
+        }
+        return '';
+    }
+
+    // the key the release tags are signed with (scripts/update.sh, verify_tag)
+    public function signingKey(): bool
+    {
+        return is_file(BOT_DATA . '/update-signing-key') && filesize(BOT_DATA . '/update-signing-key') > 0;
+    }
+
+    // the first admin, who started the bot: the only one for actions that
+    // replace the bot or its admins
+    public function isMainAdmin(): bool
+    {
+        try {
+            $c = $this->adminConfig();
+        } catch (Throwable $e) {
+            return false;
+        }
+        return isset($c['admin'][0]) && $c['admin'][0] === (int) $this->input['from'];
+    }
+
+    public function mainAdminOnly(): bool
+    {
+        if ($this->isMainAdmin()) {
+            return true;
+        }
+        $this->answer($this->input['callback_id'], 'only the main admin can do this', true);
+        return false;
     }
 
     public function changelog()
     {
         $commits = $this->newCommits(30);
         $text    = $commits
-            ? "New in " . exec('git -C / rev-parse --abbrev-ref @{u} 2>/dev/null') . ":\n\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
+            ? "New in " . htmlspecialchars(exec('git -C / rev-parse --abbrev-ref @{u} 2>/dev/null')) . ":\n\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
             : 'no updates';
         $this->send($this->input['chat'], $text);
     }
@@ -1422,13 +1471,19 @@ class Bot
                             ]
                         ]);
                     }
-                    if ($this->getPacConf()['autoupdate']) {
-                        $this->input['chat'] = $this->input['from'] = $c['admin'][0];
-                        $this->applyupdatebot();
-                    }
+                }
+                // autoupdate: signed release tags only, never a plain commit
+                $pac = $this->getPacConf();
+                if (!empty($pac['autoupdate']) && $this->signingKey() && ($tag = $this->newTag()) !== '' && ($pac['autoupdate_tried'] ?? '') !== $tag) {
+                    $pac['autoupdate_tried'] = $tag;
+                    $this->setPacConf($pac);
+                    $this->input['chat'] = $this->input['from'] = $c['admin'][0];
+                    $this->send($c['admin'][0], "autoupdate to $tag:\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $this->newCommits(30, "refs/tags/$tag"))));
+                    $this->startUpdate("tag:$tag");
                 }
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            error_log("checkVersion: $e");
         }
     }
 
@@ -6457,7 +6512,7 @@ class Bot
     public function updatebot()
     {
         $b = exec('git -C / rev-parse --abbrev-ref HEAD');
-        $track  = trim(file_get_contents('/update/branch'));
+        $track  = trim((string) @file_get_contents('/update/branch'));
         $data = [
             [
                 [
@@ -6483,27 +6538,51 @@ class Bot
             ],
         ];
         exec("git -C / branch -vv", $mm);
+        $tag  = $this->newTag();
+        $info = "\nrelease signing key: " . ($this->signingKey() ? 'set' : 'not set (autoupdate is off)')
+            . ($tag !== '' ? "\nnew release: " . htmlspecialchars($tag) : '');
         return [
-            'text' => '<pre><code class="language-shell">' . htmlentities(implode("\n", $mm)) . '</code></pre>',
+            'text' => '<pre><code class="language-shell">' . htmlentities(implode("\n", $mm)) . '</code></pre>' . $info,
             'data' => $data,
         ];
     }
 
-    public function applyupdatebot()
+    /**
+     * The update button: what comes (changelog) and a confirmation first;
+     * only the main admin installs it.
+     */
+    public function applyupdatebot($yes = false)
     {
-        // the latest traffic into the backup: Xray stops for the update
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
+        if (empty($yes)) {
+            $commits = $this->newCommits(30);
+            $branch  = trim((string) @file_get_contents('/update/branch'));
+            $current = exec('git -C / rev-parse --abbrev-ref HEAD 2>/dev/null');
+            $text    = $this->i18n('Menu') . ' -> ' . $this->i18n('update bot') . "\n\n";
+            if ($branch !== '' && $branch !== $current) {
+                $text .= 'branch: ' . htmlspecialchars("$current → $branch") . "\n\n";
+            }
+            $text .= $commits
+                ? "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
+                : 'no new commits';
+            $text .= "\n\nThe bot and the VPN stop for the update (a minute or more). Settings in ./data are kept.";
+            return $this->update($this->input['chat'], $this->input['message_id'], $text, [
+                [['text' => $this->i18n('update bot'), 'callback_data' => '/applyupdatebot yes']],
+                [['text' => $this->i18n('back'), 'callback_data' => '/menu update']],
+            ]);
+        }
+        $this->startUpdate('');
+    }
+
+    // $target: "tag:<name>" (a signed release) or '' (the tracked branch)
+    public function startUpdate(string $target)
+    {
+        // the latest traffic into the stats: Xray stops for the update
         $this->xrayStatsUser(true);
-        $this->sendBackup($this->update);
-        $r = $this->sendDraft($this->input['from'], 1, 'update...');
-        file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
-        file_put_contents('/update/key', $this->key);
-        file_put_contents('/update/curl', json_encode([
-            'chat_id'    => $this->input['chat'],
-            'message_id' => $r['result']['message_id'],
-            'text'       => '~t~'
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        file_put_contents('/update/pipe', '1');
-        $this->delete($this->input['from'], $this->input['message_id']);
+        bot_write('/update/target', $target);
+        $this->hostCommand('1', 'update...');
     }
 
     public function restart()
@@ -6535,18 +6614,20 @@ class Bot
         $this->hostCommand('3', 'rebuild images...');
     }
 
-    // hands a command to scripts/update.sh on the host: 2 restart, 3 rebuild images
+    // hands a command to scripts/update.sh on the host: 1 update, 2 restart,
+    // 3 rebuild images
     public function hostCommand($cmd, $draft)
     {
         $r = $this->sendDraft($this->input['from'], 1, $draft);
-        file_put_contents('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
-        file_put_contents('/update/key', $this->key);
-        file_put_contents('/update/curl', json_encode([
+        bot_write('/update/reload_message', "{$this->input['from']}:{$r['result']['message_id']}");
+        // the token for the "bot started" message; cleared by update.sh
+        bot_write('/update/key', $this->key, 0600);
+        bot_write('/update/curl', json_encode([
             'chat_id'    => $this->input['chat'],
             'message_id' => $r['result']['message_id'],
             'text'       => '~t~'
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        file_put_contents('/update/pipe', $cmd);
+        bot_write('/update/pipe', $cmd);
         $this->delete($this->input['from'], $this->input['message_id']);
     }
 
@@ -6782,13 +6863,14 @@ class Bot
 
     public function branches()
     {
-        exec('git -C / branch -r', $m);
-        array_shift($m);
-        foreach ($m as $k => $v) {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
+        foreach ($this->remoteBranches() as $id => $v) {
             $data[] = [
                 [
                     'text'          => $v,
-                    'callback_data' => "/changeBranch $k",
+                    'callback_data' => "/changeBranch $id",
                 ]
             ];
         }
@@ -6801,15 +6883,40 @@ class Bot
         $this->update($this->input['from'], $this->input['message_id'], $this->i18n('manage updates'), $data);
     }
 
-    public function changeBranch($i)
+    // origin's branches by a short id that stays the same (button data)
+    public function remoteBranches(): array
     {
-        exec('git -C / branch -r', $m);
-        array_shift($m);
-        foreach ($m as $k => $v) {
-            if ($i == $k) {
-                file_put_contents('/update/branch', trim(str_replace('origin/', '', $v)));
+        exec('git -C / branch -r --format="%(refname:short)" 2>/dev/null', $m);
+        $r = [];
+        foreach ($m as $v) {
+            $v = trim($v);
+            if (preg_match('~^origin/([A-Za-z0-9._/-]+)$~D', $v, $b) && $b[1] !== 'HEAD' && $b[1][0] !== '-') {
+                $r[hash('crc32b', $b[1])] = $b[1];
             }
         }
+        return $r;
+    }
+
+    /**
+     * The branch the next update switches to: main admin only, after a
+     * confirmation (another branch can be another bot).
+     */
+    public function changeBranch($id, $yes = false)
+    {
+        if (!$this->mainAdminOnly()) {
+            return;
+        }
+        $branch = $this->remoteBranches()[$id] ?? null;
+        if ($branch === null) {
+            return $this->branches();
+        }
+        if (empty($yes)) {
+            return $this->update($this->input['chat'], $this->input['message_id'], $this->i18n('manage updates') . "\n\n" . 'track branch <b>' . htmlspecialchars($branch) . '</b>? The next update (update bot) switches to it.', [
+                [['text' => $this->i18n('yes'), 'callback_data' => "/changeBranch $id yes"]],
+                [['text' => $this->i18n('back'), 'callback_data' => '/branches']],
+            ]);
+        }
+        bot_write('/update/branch', $branch);
         $this->menu('update');
     }
 
@@ -6901,28 +7008,28 @@ class Bot
     }
 
     /**
-     * After an update (scripts/update.sh resets the repository, so the
-     * config files are back to their defaults) the settings come back from
-     * the plain backup the bot left in /update/json. The update files are
-     * cleared first, so a failure here cannot repeat on every start. A
-     * backup is applied only over default settings: if the settings were
-     * changed since (the backup is stale), they are kept and the backup is
-     * set aside.
+     * After an update: the message of scripts/update.sh. Versions before
+     * ./data reset the repository on update and left a plain settings
+     * backup in /update/json, restored here once (this happens on the
+     * first update to this version: the old update.sh does it). The file
+     * is removed either way: it holds every key in plain text. A backup is
+     * applied only over default settings; if the settings were changed
+     * since, they are kept.
      */
     public function selfUpdate()
     {
         $rm = explode(':', trim((string) @file_get_contents('/update/reload_message')));
         $m  = trim((string) @file_get_contents('/update/message'));
-        file_put_contents('/update/message', '');
-        file_put_contents('/update/reload_message', '');
+        bot_write('/update/message', '');
+        bot_write('/update/reload_message', '');
         $c = $this->config();
         $chat = preg_match('~^-?\d+$~D', $rm[0] ?? '') ? (int) $rm[0] : (int) ($c['admin'][0] ?? 0);
         $to   = preg_match('~^\d+$~D', $rm[1] ?? '') ? (int) $rm[1] : null;
+        if ($m !== '') {
+            $this->send($chat, '<pre>' . htmlspecialchars($m) . '</pre>', $to);
+        }
         if (file_exists($this->update)) {
             $this->selfupdate = true;
-            if ($m !== '') {
-                $this->send($chat, '<pre>' . htmlspecialchars($m) . '</pre>', $to);
-            }
             if ($this->defaultSettings()) {
                 $r = $this->send($chat, "import settings");
                 $this->input['chat']        = $chat;
@@ -6930,17 +7037,21 @@ class Bot
                 $this->input['callback_id'] = false;
                 try {
                     $this->importFile($this->update);
-                    @unlink($this->update);
                 } catch (Throwable $e) {
-                    $kept = '/update/json.failed-' . date('Ymd-His');
-                    @rename($this->update, $kept);
-                    $this->send($chat, 'import settings failed: ' . htmlspecialchars($e->getMessage()) . "\nthe backup is kept as " . basename($kept) . ' in the bot folder update/');
+                    // a copy only root can read, outside the folder the containers write to
+                    $kept = BOT_DATA . '/backup/legacy-update-' . date('Ymd-His') . '.json';
+                    @mkdir(BOT_DATA . '/backup', 0700);
+                    bot_write($kept, bot_read($this->update), 0600);
+                    $this->send($chat, 'import settings failed: ' . htmlspecialchars($e->getMessage()) . "\nthe settings are kept in data/backup/" . basename($kept) . ' (plain text: delete it once restored)');
                 }
             } else {
-                $kept = '/update/json.unapplied-' . date('Ymd-His', (int) filemtime($this->update));
-                @rename($this->update, $kept);
-                $this->send($chat, 'a settings backup from ' . date('Y-m-d H:i', (int) filemtime($kept)) . ' was not applied: the current settings are not the defaults, so they were kept. The backup is saved as ' . basename($kept) . ' in the bot folder update/');
+                $this->send($chat, 'a settings backup from ' . date('Y-m-d H:i', (int) filemtime($this->update)) . ' was not applied: the current settings are not the defaults, so they were kept');
             }
+            @unlink($this->update);
+        }
+        // copies the earlier versions kept
+        foreach (glob('/update/json.{failed,unapplied}-*', GLOB_BRACE) ?: [] as $f) {
+            @unlink($f);
         }
         $pac = $this->getPacConf();
         unset($pac['restart']);
@@ -6950,11 +7061,11 @@ class Bot
     // settings as after a repository reset: Xray config of the repository, no own settings in pac.json
     public function defaultSettings(): bool
     {
-        $repo = shell_exec('git -C / show HEAD:config/xray.json 2>/dev/null');
+        $repo = @file_get_contents('/config/xray.json');
         if (!empty($repo) && json_decode($repo, true) == $this->getXray()) {
             return true;
         }
-        return !array_diff_key($this->getPacConf() ?: [], array_flip(['hashbot', 'oc_domain', 'restart']));
+        return !array_diff_key($this->getPacConf() ?: [], array_flip(['hashbot', 'oc_domain', 'restart', 'adminhash', 'debug_until']));
     }
 
     public function backup()
@@ -7205,10 +7316,14 @@ class Bot
         return !empty($p['domain']) && $this->validHost($p['domain']) && !empty($p['letsencrypt']) ? (string) $p['letsencrypt'] : '';
     }
 
+    // autoupdate installs signed release tags only: not without the key
     public function autoupdate()
     {
         $p = $this->getPacConf();
-        $p['autoupdate'] = !$p['autoupdate'];
+        if (empty($p['autoupdate']) && !$this->signingKey()) {
+            return $this->answer($this->input['callback_id'], 'autoupdate needs the release signing key: put it into data/update-signing-key on the server (see HARDENING.md)', true);
+        }
+        $p['autoupdate'] = empty($p['autoupdate']);
         $this->setPacConf($p);
         $this->menu('config');
     }

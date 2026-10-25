@@ -8,7 +8,7 @@ _ := $(shell touch ./docker-compose.override.yml ./docker-compose.ports.yml)
 b:
 	XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose build
 preup:
-	bash ./scripts/update.sh &
+	bash $(CURDIR)/scripts/update.sh &
 start: # запуск контейнеров
 	touch ./override.env ./docker-compose.override.yml ./config/location.conf ./config/override.conf
 	@# the working state into ./data (once; nothing is overwritten)

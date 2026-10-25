@@ -108,7 +108,9 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 
 ## Обновление
 
-Кнопка **update bot** (бот сам сообщает о новых коммитах). Вручную: `cd /root/vpnbot && git pull && make r`.
+Кнопка **update bot** (бот сам сообщает о новых коммитах, перед установкой показывает список изменений и просит подтверждения; ставит только главный админ). Вручную: `cd /root/vpnbot && git fetch && git merge --ff-only && make r`.
+
+Настройки, ключи и конфиги лежат в `./data` (не в git): обновление их не трогает. Автообновление ставит только подписанные теги релизов; для него положите ключ подписи в `./data/update-signing-key` (GPG-ключ или строка `* ssh-ed25519 AAAA…` в формате allowed signers), иначе автообновление не включается.
 
 Обновления безопасности внутри контейнеров (Alpine, PHP, сертификаты, AdGuard Home) приходят только с пересборкой образов: кнопка **rebuild images** или вручную `cd /root/vpnbot && make d && make rebuild && make u` (`make rebuild S=ad` — только один сервис). Обновление пакетов на хосте (`apt`) их не затрагивает.
 
