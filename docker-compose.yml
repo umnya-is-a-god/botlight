@@ -434,6 +434,8 @@ services:
             - ./sshhost/oc:/etc/ssh/pinned:ro
             # ocserv.conf and ocserv.passwd (the bot writes both)
             - ./data/ocserv:/etc/ocserv:ro
+            # the traffic of ended sessions (scripts/oc_disconnect.sh)
+            - ./data/octraffic:/octraffic
             - ./certs:/certs:ro
         # DTLS straight to ocserv: the TCP side comes through upstream with
         # the proxy protocol, which ocserv takes on TCP only

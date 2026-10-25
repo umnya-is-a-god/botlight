@@ -188,7 +188,7 @@ function bot_config_save(array $c): void
  */
 function bot_prepare_files(): void
 {
-    foreach (['', '/xray', '/adguard', '/ocserv', '/up', '/ng', '/www', '/dnstt'] as $d) {
+    foreach (['', '/xray', '/adguard', '/ocserv', '/octraffic', '/up', '/ng', '/www', '/dnstt'] as $d) {
         if (!is_dir(BOT_DATA . $d) && !@mkdir(BOT_DATA . $d, 0700, true)) {
             throw new RuntimeException('cannot create ' . BOT_DATA . $d);
         }
