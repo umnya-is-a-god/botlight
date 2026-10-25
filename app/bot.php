@@ -46,6 +46,8 @@ class Bot
     public $time_logrotate;
     // when the IP limit last alerted about a user
     public $ipAlerted = [];
+    // the last scan of the analysis menu (task.php logs analysis)
+    public $analysisCache = '/tmp/analysis.json';
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -239,8 +241,8 @@ class Bot
             case preg_match('~^/ports$~', $this->input['callback'], $m):
                 $this->ports();
                 break;
-            case preg_match('~^/analysisIp(?:\s(\d+))?$~', $this->input['callback'], $m):
-                $this->analysisIp($m[1] ?: 0);
+            case preg_match('~^/analysisIp(?:\s(\d+))?(\snew)?$~', $this->input['callback'], $m):
+                $this->analysisIp((int) ($m[1] ?? 0), new: !empty($m[2]));
                 break;
             case preg_match('~^/ipMenu$~', $this->input['callback'], $m):
                 $this->ipMenu();
@@ -1205,31 +1207,64 @@ class Bot
         ];
     }
 
-    public function importListFile($message, $type)
+    /**
+     * The file the admin sent with this message, at most $max bytes; null
+     * (and a message why) if there is none, it is too big or does not load.
+     * Telegram gives bots files up to 20 MB.
+     */
+    public function downloadInput(int $max): ?string
     {
         if (empty($this->input['file_id'])) {
-            $this->send($this->input['chat'], 'send the list as a file');
-            return;
+            $this->send($this->input['chat'], 'send it as a file');
+            return null;
         }
-        $r = $this->request('getFile', ['file_id' => $this->input['file_id']]);
-        $f = file_get_contents($this->file . $r['result']['file_path']);
-        if (!empty($f)) {
-            foreach (explode("\n", $f) as $v) {
-                if (!empty($s = trim($v))) {
-                    $t = explode(';', $s);
-                    if ($type == 'rulessetlist') {
-                        if (preg_match('~^.+:.+:https?://.+~', $t[0])) {
-                            $list[$t[0]] = (bool) $t[1];
-                        }
-                    } else {
-                        $list[$t[0]] = (bool) $t[1];
-                    }
+        $r    = $this->request('getFile', ['file_id' => $this->input['file_id']]);
+        $path = $r['result']['file_path'] ?? '';
+        $mb   = round($max / 1048576, 1) . ' MB';
+        if (($r['result']['file_size'] ?? 0) > $max) {
+            $this->send($this->input['chat'], "the file is over $mb");
+            return null;
+        }
+        $f = $path !== '' ? @fopen($this->file . $path, 'r') : false;
+        // the size Telegram reports is optional: never more than $max read
+        $s = $f ? stream_get_contents($f, $max + 1) : false;
+        if ($f) {
+            fclose($f);
+        }
+        if (!is_string($s)) {
+            $this->send($this->input['chat'], 'cannot load the file');
+            return null;
+        }
+        if (strlen($s) > $max) {
+            $this->send($this->input['chat'], "the file is over $mb");
+            return null;
+        }
+        return $s;
+    }
+
+    public function importListFile($message, $type)
+    {
+        $f = $this->downloadInput(5 * 1048576);
+        if ($f === null) {
+            return $this->backXtlsList($type);
+        }
+        $list = [];
+        foreach (explode("\n", $f) as $v) {
+            if (!empty($s = trim($v))) {
+                $t = explode(';', $s);
+                if ($type != 'rulessetlist' || preg_match('~^.+:.+:https?://.+~', $t[0])) {
+                    $list[$t[0]] = (bool) ($t[1] ?? false);
                 }
             }
-            $p = $this->getPacConf();
-            $p[$type] = $list;
-            $this->setPacConf($p);
         }
+        // a file without entries (wrong file, wrong list) changes nothing
+        if (!$list) {
+            $this->send($this->input['chat'], 'no entries in the file: the list stays as it is');
+            return $this->backXtlsList($type);
+        }
+        $p = $this->getPacConf();
+        $p[$type] = $list;
+        $this->setPacConf($p);
         $this->backXtlsList($type);
     }
 
@@ -1405,7 +1440,8 @@ class Bot
             $pac = $this->getPacConf();
             if (!empty($pac['autoscan'])) {
                 $c = $this->config();
-                if (!empty($c['admin']) && (empty($this->time3) || ((time() - $this->time3) > $pac['autoscan_timeout']))) {
+                // set by earlier versions: maybe below the 5 minutes
+                if (!empty($c['admin']) && (empty($this->time3) || ((time() - $this->time3) > max(300, (int) ($pac['autoscan_timeout'] ?? 3600))))) {
                     $this->time3 = time();
                     $r = $this->analysisIp(return: 1);
                     if (!empty($r)) {
@@ -1446,73 +1482,73 @@ class Bot
         }
     }
 
+    /**
+     * The backup schedule "start / period" (e.g. "2025-01-01 03:00 / 1 day"):
+     * [start, period in seconds], or null if it is wrong. An hour at least:
+     * every backup goes to every admin's chat.
+     */
+    public function backupSchedule($s): ?array
+    {
+        $p = array_map('trim', explode('/', (string) $s, 2));
+        if (count($p) !== 2 || $p[0] === '' || $p[1] === '') {
+            return null;
+        }
+        $start  = strtotime($p[0]);
+        $period = strtotime($p[1], 0);
+        return $start && $period >= 3600 ? [$start, $period] : null;
+    }
+
     public function checkBackup()
     {
         $c = $this->getPacConf();
-        if (!empty($c['backup'])) {
-            $now = time();
-            [$start, $period] = explode('/', $c['backup']);
-            $start  = strtotime(trim($start));
-            $period = strtotime(trim($period), 0);
-
-            if (
-                !empty($start)
-                && !empty($period)
-                && $now >= $start
-            ) {
-                // Вычисляем, сколько полных периодов прошло с момента start
-                $elapsed = $now - $start;
-                $periodsElapsed = floor($elapsed / $period);
-
-                // Время последнего планового бэкапа
-                $lastScheduledBackup = $start + ($periodsElapsed * $period);
-
-                // Проверяем, делали ли уже бэкап в этом периоде
-                $lastBackupTime = $c['last_backup_time'] ?? 0;
-
-                // Если последний бэкап был сделан до начала текущего периода - делаем бэкап
-                if ($lastBackupTime < $lastScheduledBackup) {
-                    $c['last_backup_time'] = $now;
-                    $this->setPacConf($c);
-                    $this->sendBackup();
-                }
+        if (empty($c['backup']) || !($b = $this->backupSchedule($c['backup']))) {
+            return;
+        }
+        [$start, $period] = $b;
+        $now = time();
+        if ($now < $start) {
+            return;
+        }
+        // the last scheduled time; one backup per period, also after a pause
+        $due  = $start + intdiv($now - $start, $period) * $period;
+        $done = false;
+        $this->updateState(function ($st) use ($c, $due, $now, &$done) {
+            // earlier versions kept the time in the settings
+            if (($st['last_backup_time'] ?? $c['last_backup_time'] ?? 0) < $due) {
+                $st['last_backup_time'] = $now;
+                $done = true;
             }
+            return $st;
+        });
+        if ($done) {
+            $this->sendBackup();
         }
     }
 
+    /**
+     * Monthly reset of the Xray traffic: on the first run of each calendar
+     * month (server time zone). Turned on in the middle of a month, the
+     * first reset is at the start of the next one.
+     */
     public function checkResetXrayStats()
     {
         $pac = $this->getPacConf();
-        if (!empty($pac['reset_monthly'])) {
-            $now    = time();
-            $start  = strtotime('first day of previous month midnight');
-            $period = strtotime('1 month', 0);
-
-            if (
-                !empty($start)
-                && !empty($period)
-                && $now >= $start
-            ) {
-                // Вычисляем, сколько полных периодов прошло с момента start
-                $elapsed = $now - $start;
-                $periodsElapsed = floor($elapsed / $period);
-
-                // Время последнего планового сброса статистики
-                $lastScheduledReset = $start + ($periodsElapsed * $period);
-
-                // Проверяем, делали ли уже сброс в этом периоде
-                $lastResetTime = $pac['last_reset_xray_time'] ?? 0;
-
-                // Если последний сброс был сделан до начала текущего периода - делаем сброс
-                if ($lastResetTime < $lastScheduledReset) {
-                    $pac['last_reset_xray_time'] = $now;
-                    $this->setPacConf($pac);
-                    $this->resetXrStats(1);
-                    $c = $this->config();
-                    foreach ($c['admin'] as $admin) {
-                        $this->send($admin, "vless: reset stats");
-                    }
-                }
+        if (empty($pac['reset_monthly'])) {
+            return;
+        }
+        $month = date('Y-m');
+        $reset = false;
+        $this->updateState(function ($st) use ($pac, $month, &$reset) {
+            // earlier versions: the time of the last reset in the settings
+            $last = $st['last_reset_month'] ?? (!empty($pac['last_reset_xray_time']) ? date('Y-m', (int) $pac['last_reset_xray_time']) : $month);
+            $reset = $last !== $month;
+            $st['last_reset_month'] = $month;
+            return $st;
+        });
+        if ($reset) {
+            $this->resetXrStats(1);
+            foreach ($this->config()['admin'] ?? [] as $admin) {
+                $this->send($admin, "vless: reset stats");
             }
         }
     }
@@ -1938,6 +1974,47 @@ class Bot
     }
 
     // reply with the password for an encrypted backup ($fileId from the prompt)
+    /**
+     * What is wrong with a backup (export()), before any of it is applied:
+     * each part that is there must have the shape the import uses.
+     */
+    public function backupProblems(array $j): array
+    {
+        $p    = [];
+        $pair = function ($v, $key, $pub) {
+            return is_array($v) && is_string($v['private'] ?? null) && is_string($v['public'] ?? null)
+                && preg_match($key, $v['private']) && preg_match($pub, $v['public']);
+        };
+        if (!array_intersect(['pac', 'ad', 'xray', 'oc', 'ssl', 'dnstt', 'xraystats'], array_keys(array_filter($j)))) {
+            return ['not a backup of the bot'];
+        }
+        if (!empty($j['pac']) && !is_array($j['pac'])) {
+            $p[] = 'pac: not an object';
+        }
+        if (!empty($j['ad']) && (!is_array($j['ad']) || !is_array($j['ad']['dns'] ?? null))) {
+            $p[] = 'ad: not an AdGuard config';
+        }
+        if (!empty($j['xray']) && (!is_array($j['xray']) || !is_array($j['xray']['inbounds'][0]['settings']['clients'] ?? null))) {
+            $p[] = 'xray: not an Xray config with clients';
+        }
+        if (!empty($j['xray']) && empty($j['pac'])) {
+            $p[] = 'xray: without pac';
+        }
+        if (!empty($j['xraystats']) && !is_array($j['xraystats'])) {
+            $p[] = 'xraystats: not an object';
+        }
+        if (!empty($j['oc']) && (!is_string($j['oc']) || !is_string($j['ocu'] ?? null))) {
+            $p[] = 'oc: config or users missing';
+        }
+        if (!empty($j['ssl']) && !$pair($j['ssl'], '~-----BEGIN [A-Z ]*PRIVATE KEY-----~', '~-----BEGIN CERTIFICATE-----~')) {
+            $p[] = 'ssl: not a key and certificate';
+        }
+        if (!empty($j['dnstt']) && !$pair($j['dnstt'], '~\S~', '~\S~')) {
+            $p[] = 'dnstt: keys missing';
+        }
+        return $p;
+    }
+
     public function importWithPassword($text, $fileId)
     {
         if (!$this->mainAdminOnly()) {
@@ -1952,8 +2029,11 @@ class Bot
         if (!empty($file)) {
             $json = json_decode(file_get_contents($file), true);
         } else {
-            $r    = $this->request('getFile', ['file_id' => $this->input['file_id']]);
-            $json = json_decode(file_get_contents($this->file . $r['result']['file_path']), true);
+            $f = $this->downloadInput(20 * 1048576);
+            if ($f === null) {
+                return;
+            }
+            $json = json_decode($f, true);
         }
         if (is_array($json) && !empty($json['vpnbot_backup'])) {
             // encrypted: the password is asked for (not kept on the server)
@@ -1979,8 +2059,15 @@ class Bot
             }
             $json = json_decode($plain, true);
         }
-        if (empty($json) || !is_array($json)) {
+        $problems = is_array($json) ? $this->backupProblems($json) : ['not a backup of the bot'];
+        if ($problems && !empty($file)) {
+            // the settings left by an earlier version (selfUpdate keeps a copy)
+            throw new RuntimeException(implode('; ', $problems));
+        }
+        if ($problems) {
+            // checked before anything is changed: a wrong file changes nothing
             $this->answer($this->input['callback_id'], 'error', true);
+            $this->send($this->input['chat'], "import stopped, nothing changed:\n" . htmlspecialchars(implode("\n", $problems)));
         } else {
             // certs
             if (!empty($json['ssl'])) {
@@ -2045,12 +2132,14 @@ class Bot
             $this->cloakNginx();
 
             $out[] = "end import";
-            $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
             $this->language = $this->getPacConf()['language'] ?: 'en';
             $this->limit    = $this->getPacConf()['limitpage'] ?: 5;
             if (empty($file)) {
-                sleep(3);
+                // the log stays as a message of its own, the menu goes back in place
+                $this->send($this->input['chat'], implode("\n", $out));
                 $this->menu();
+            } else {
+                $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
             }
         }
     }
@@ -2805,9 +2894,7 @@ class Bot
         $c['users'][0]['password'] = password_hash($pass, PASSWORD_DEFAULT);
         $this->saveAdguard($c);
         $this->setSecret('adpswd', $pass);
-        $out[] = $this->startAd();
-        $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        sleep(3);
+        $this->startAd();
         $this->menu('adguard');
     }
 
@@ -2822,7 +2909,6 @@ class Bot
         }
         $this->adguardSync();
         $this->cloakNginx();
-        sleep(3);
         $this->menu('adguard');
     }
 
@@ -2972,12 +3058,8 @@ class Bot
     public function dnscheck($dns)
     {
         exec('JSON=1 dnslookup ' . implode(' ', array_map('escapeshellarg', preg_split('~\s+~', trim($dns)))), $out, $code);
-        if ($code) {
-            $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out), mode: false);
-        } else {
-            $this->send($this->input['chat'], "JSON=1 dnslookup $dns\n" . implode("\n", $out), mode: false);
-        }
-        sleep(3);
+        // a message of its own, the menu goes back in place
+        $this->send($this->input['chat'], mb_substr(($code ? '' : "JSON=1 dnslookup $dns\n") . implode("\n", $out), 0, 4000), mode: false);
         $this->menu('adguard');
     }
 
@@ -3018,9 +3100,7 @@ class Bot
         $c = $this->getAdguard();
         $c['dns']['upstream_dns'][] = $url;
         $this->saveAdguard($c);
-        $out[] = $this->startAd();
-        $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
-        sleep(3);
+        $this->startAd();
         $this->menu('adguard');
     }
 
@@ -3742,13 +3822,10 @@ class Bot
         if ($type == false) {
             $update = exec('git -C / rev-list --count HEAD..@{u}');
             $branch = exec('git -C / rev-parse --abbrev-ref HEAD');
-            $backup = array_filter(explode('/', $conf['backup'] ?? ''));
-            if (!empty($backup)) {
-                if (!empty(strtotime($backup[0])) && !empty(strtotime($backup[1]))) {
-                    $backup = "{$backup[0]} start / {$backup[1]} period";
-                } else {
-                    $backup = "{$conf['backup']} - wrong format";
-                }
+            $backup = '';
+            if (!empty($conf['backup'])) {
+                $b      = array_map('trim', explode('/', $conf['backup'], 2));
+                $backup = $this->backupSchedule($conf['backup']) ? "{$b[0]} start / {$b[1]} period" : htmlspecialchars($conf['backup']) . ' - wrong format';
             }
             $cron   = $this->dontshowcron ? '' : $this->i18n($this->ssh('pgrep -f cron.php', 'service') ? 'on' : 'off') . ' cron';
             $main[] = 'v' . getenv('VER') . " $branch" . ($update ? ' (have updates)' : '');
@@ -3806,7 +3883,7 @@ class Bot
             $main[] = '';
             $main[] = $this->alignColumns([
                 [
-                    $this->i18n($backup ? 'on' : 'off') . ' autobackup',
+                    $this->i18n($this->backupSchedule($conf['backup'] ?? '') ? 'on' : 'off') . ' autobackup',
                     $this->i18n(!empty($conf['autoupdate']) ? 'on' : 'off') . ' autoupdate',
                     $this->i18n(!empty($conf['autoscan']) ? 'on' : 'off') . ' autoscan',
                 ],
@@ -3917,7 +3994,15 @@ class Bot
     public function switchMonthlyStats()
     {
         $c = $this->getPacConf();
-        $c['reset_monthly'] = $c['reset_monthly'] ? 0 : 1;
+        $c['reset_monthly'] = !empty($c['reset_monthly']) ? 0 : 1;
+        unset($c['last_reset_xray_time']);
+        if ($c['reset_monthly']) {
+            // counted from this month: the first reset at the start of the next
+            $this->updateState(function ($st) {
+                $st['last_reset_month'] = date('Y-m');
+                return $st;
+            });
+        }
         $this->setPacConf($c);
         $this->xray();
     }
@@ -4027,7 +4112,7 @@ class Bot
 
     public function suspicious($regexp, $file, $ranges, $title, $reverse = false)
     {
-        if ($r = fopen($file, 'r')) {
+        if ($r = @fopen($file, 'r')) {
             while (feof($r) === false) {
                 $l = fgets($r);
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
@@ -4062,7 +4147,12 @@ class Bot
         return $ret ?: [];
     }
 
-    public function analysisIp(int $page = 0, $return = false)
+    /**
+     * Suspicious addresses in the access logs (not on the white or block
+     * lists, not seen as clients): [ip => [[title, log], ...]]. Reads the
+     * whole logs: run in the cron loop or in the background (task.php).
+     */
+    public function analysisScan(): array
     {
         $pac = $this->getPacConf();
         $xr  = [];
@@ -4073,7 +4163,7 @@ class Bot
                 }
             }
         }
-        if ($r = fopen('/logs/nginx_doh_access', 'r')) {
+        if ($r = @fopen('/logs/nginx_doh_access', 'r')) {
             while (feof($r) === false) {
                 $l = fgets($r);
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
@@ -4084,7 +4174,7 @@ class Bot
             }
             fclose($r);
         }
-        if ($r = fopen('/logs/xray', 'r')) {
+        if ($r = @fopen('/logs/xray', 'r')) {
             while (feof($r) === false) {
                 $l = fgets($r);
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)(?=.+accepted)~', $l, $m)) {
@@ -4117,8 +4207,36 @@ class Bot
             }
         }
 
+        return $ip;
+    }
+
+    /**
+     * The analysis menu. The logs are read in the background (they can be
+     * large): the menu shows the last scan if it is under 10 minutes old,
+     * otherwise (or with $new) a scan starts and updates this message.
+     */
+    public function analysisIp(int $page = 0, $return = false, $new = false)
+    {
         if (!empty($return)) {
-            return $ip;
+            return $this->analysisScan();
+        }
+        $cache = is_file($this->analysisCache) ? json_decode((string) @file_get_contents($this->analysisCache), true) : null;
+        if ($new || !is_array($cache) || time() - (int) ($cache['time'] ?? 0) > 600) {
+            $this->update($this->input['from'], $this->input['message_id'], 'reading the logs...');
+            return $this->logTask('analysis', (string) $page);
+        }
+        $pac = $this->getPacConf();
+        $ip  = [];
+        foreach ((array) ($cache['ip'] ?? []) as $k => $n) {
+            // blocked or ignored since the scan: no longer in the list
+            foreach (array_merge($pac['white'] ?: [], $pac['deny'] ?: []) as $v) {
+                $v = (string) $v;
+                if ($v === $k || (str_contains($v, '/') && filter_var($k, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
+                    && filter_var(explode('/', $v)[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && $this->ipInRange($k, $v))) {
+                    continue 2;
+                }
+            }
+            $ip[$k] = $n;
         }
         if (!empty($ip)) {
             foreach ($ip as $k => $v) {
@@ -4151,6 +4269,10 @@ class Bot
             }
         }
         $data[] = [
+            [
+                'text'          => '🔄 ' . date('H:i', (int) $cache['time']),
+                'callback_data' => "/analysisIp 0 new",
+            ],
             [
                 'text'          => $this->i18n('back'),
                 'callback_data' => "/ipMenu",
@@ -4224,69 +4346,88 @@ class Bot
         $this->answer($this->input['callback_id']);
     }
 
+    // every log line with the address, as a file (task.php logs ip)
     public function searchIp($ip)
     {
-        foreach ($this->logs as $v) {
-            if ($r = fopen("/logs/$v", 'r')) {
-                while (feof($r) === false) {
-                    $l = fgets($r);
-                    if (preg_match($this->ipRegex($ip), $l)) {
-                        $res[$v][] = $l;
-                    }
-                }
-                fclose($r);
-            }
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return $this->answer($this->input['callback_id'], 'wrong address');
         }
-        if (!empty($res)) {
-            foreach ($res as $k => $v) {
-                $head= "$k:\n";
-                $t = array_chunk($v, 10);
-                foreach ($t as $j) {
-                    $text = "$head<pre>";
-                    foreach ($j as $i) {
-                        $text .= htmlspecialchars($i, ENT_HTML5, 'UTF-8');
-                    }
-                    $text .= '</pre>';
-                    $this->send($this->input['from'], $text, $this->input['message_id']);
-                }
-            }
-        } else {
-            $this->answer($this->input['callback_id'], 'empty');
-        }
+        $this->answer($this->input['callback_id'], 'reading the logs: a file follows');
+        $this->logTask('ip', $ip);
     }
 
+    // the suspicious log lines of the address, as a file (task.php logs suspicious)
     public function searchSuspiciousIp($ip)
     {
-        $t = [
-            $this->suspicious('~\d+\.\d+\.\d+\.\d+.+200\s\d+\s0$~', '/logs/upstream_access', "$ip/32", 'possibly a Reality Degenerate'),
-            $this->suspicious($this->reg, '/logs/nginx_default_access', "$ip/32", 'possibly a scanner', true),
-            $this->suspicious($this->reg, '/logs/nginx_domain_access', "$ip/32", 'possibly a scanner', true),
-        ];
-        foreach ($t as $r) {
-            if (!empty($r)) {
-                foreach ($r as $v) {
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return $this->answer($this->input['callback_id'], 'wrong address');
+        }
+        $this->answer($this->input['callback_id'], 'reading the logs: a file follows');
+        $this->logTask('suspicious', $ip);
+    }
+
+    // a log scan in the background: the bot keeps answering meanwhile
+    public function logTask(string $kind, string $arg)
+    {
+        $chat = (int) ($this->input['chat'] ?? $this->input['from'] ?? 0);
+        $msg  = (int) ($this->input['message_id'] ?? 0);
+        exec('cd /app && nohup php task.php logs ' . escapeshellarg($kind) . ' ' . escapeshellarg($arg) . " $chat $msg > /dev/null 2>&1 &");
+    }
+
+    /**
+     * Runs in task.php: the analysis (its cache, then the menu in the same
+     * message) or the lines of one address, sent as a text file.
+     */
+    public function logScan(string $kind, string $arg)
+    {
+        $chat = (int) $this->input['chat'];
+        if ($kind === 'analysis') {
+            $ip = array_map('count', $this->analysisScan());
+            bot_write($this->analysisCache, json_encode(['time' => time(), 'ip' => $ip ?: new stdClass()]));
+            return $this->analysisIp((int) $arg);
+        }
+        if (!filter_var($arg, FILTER_VALIDATE_IP)) {
+            return;
+        }
+        $res = [];
+        if ($kind === 'ip') {
+            foreach ($this->logs as $v) {
+                if ($r = @fopen("/logs/$v", 'r')) {
+                    while (($l = fgets($r)) !== false) {
+                        if (preg_match($this->ipRegex($arg), $l)) {
+                            $res[$v][] = $l;
+                        }
+                    }
+                    fclose($r);
+                }
+            }
+        } elseif ($kind === 'suspicious') {
+            foreach ([
+                $this->suspicious('~\d+\.\d+\.\d+\.\d+.+200\s\d+\s0$~', '/logs/upstream_access', "$arg/32", 'possibly a Reality Degenerate'),
+                $this->suspicious($this->reg, '/logs/nginx_default_access', "$arg/32", 'possibly a scanner', true),
+                $this->suspicious($this->reg, '/logs/nginx_domain_access', "$arg/32", 'possibly a scanner', true),
+            ] as $r) {
+                foreach ((array) $r as $v) {
                     foreach ($v as $k) {
-                        $logs[$k['title']][] = $k['log'];
+                        $res[$k['title']][] = $k['log'];
                     }
                 }
             }
         }
-        if (!empty($logs)) {
-            foreach ($logs as $k => $v) {
-                $head= "$k:\n";
-                $t = array_chunk($v, 10);
-                foreach ($t as $j) {
-                    $text = "$head<pre>";
-                    foreach ($j as $i) {
-                        $text .= htmlspecialchars($i, ENT_HTML5, 'UTF-8');
-                    }
-                    $text .= '</pre>';
-                    $this->send($this->input['from'], $text, $this->input['message_id']);
-                }
-            }
-        } else {
-            $this->answer($this->input['callback_id'], 'empty');
+        if (!$res) {
+            return $this->send($chat, "<code>$arg</code>: nothing found");
         }
+        // Telegram takes documents up to 50 MB; a few MB are enough to read
+        $text = '';
+        $max  = 10 * 1048576;
+        foreach ($res as $k => $v) {
+            $text .= "== $k: " . count($v) . " lines\n" . implode('', $v) . "\n";
+            if (strlen($text) > $max) {
+                $text = substr($text, 0, $max) . "\n... cut at 10 MB\n";
+                break;
+            }
+        }
+        $this->upload(($kind === 'ip' ? 'logs' : 'suspicious') . '_' . str_replace(':', '-', $arg) . '.txt', $text, $chat);
     }
 
     public function importIps($type)
@@ -5254,14 +5395,16 @@ class Bot
     public function setAutoScanTimeout($time)
     {
         $pac = $this->getPacConf();
+        $t   = empty($time) ? 0 : strtotime($time, 0);
         if (empty($time)) {
             unset($pac['autoscan_timeout']);
             unset($pac['autoscan']);
-        } elseif ($t = strtotime($time, 0)) {
+        } elseif ($t >= 300) {
+            // five minutes at least: each scan reads the whole access logs
             $pac['autoscan_timeout'] = $t;
             $pac['autoscan'] = 1;
         } else {
-            $this->send($this->input['from'], "$time - wrong format", $this->input['message_id']);
+            $this->send($this->input['from'], htmlspecialchars($time) . ' - wrong format, 5 minutes at least', $this->input['message_id']);
         }
         $this->setPacConf($pac);
         $this->ipMenu();
@@ -5299,12 +5442,11 @@ class Bot
             $this->send($this->input['chat'], 'name in the file caption: up to 24 bytes, letters, digits, space . _ -, not "origin"');
             return;
         }
-        if (empty($this->input['file_id'])) {
-            $this->send($this->input['chat'], 'send the template as a file');
+        $f = $this->downloadInput(1048576);
+        if ($f === null) {
             return;
         }
-        $r    = $this->request('getFile', ['file_id' => $this->input['file_id']]);
-        $json = json_decode(file_get_contents($this->file . $r['result']['file_path']), true);
+        $json = json_decode($f, true);
         if (!is_array($json)) {
             $this->send($this->input['chat'], 'wrong format');
             return;
@@ -7711,13 +7853,10 @@ class Bot
                 'callback_data' => "/backupPassword",
             ],
         ];
-        $backup = array_filter(explode('/', (string) ($conf['backup'] ?? '')));
-        if (!empty($backup)) {
-            if (!empty(strtotime($backup[0])) && !empty(strtotime($backup[1]))) {
-                $backup = "{$backup[0]} start / {$backup[1]} period";
-            } else {
-                $backup = $this->i18n('off') . " {$conf['backup']} - wrong format";
-            }
+        $backup = '';
+        if (!empty($conf['backup'])) {
+            $b      = array_map('trim', explode('/', $conf['backup'], 2));
+            $backup = $this->backupSchedule($conf['backup']) ? "{$b[0]} start / {$b[1]} period" : $this->i18n('off') . " {$conf['backup']} - wrong format";
         }
         $data[] = [
             [
@@ -8255,13 +8394,10 @@ class Bot
         $c    = $this->getPacConf();
         if (empty($text)) {
             $c['backup'] = '';
+        } elseif ($b = $this->backupSchedule($text)) {
+            $c['backup'] = implode(' / ', [date('Y-m-d H:i', $b[0]), trim(explode('/', $text, 2)[1])]);
         } else {
-            [$start, $period] = explode('/', $text);
-            if (!empty(strtotime($start)) && !empty(strtotime($period))) {
-                $c['backup'] = implode(' / ', [date('Y-m-d H:i', strtotime($start)), trim($period)]);
-            } else {
-                $this->send($this->input['from'], $this->input['message'] . ' - wrong format');
-            }
+            $this->send($this->input['from'], htmlspecialchars($text) . ' - wrong format, the period is an hour at least');
         }
         $this->setPacConf($c);
         $this->menu('config');
