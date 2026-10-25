@@ -324,11 +324,12 @@ class Bot
             case preg_match('~^/dnsttPassword$~', $this->input['callback'], $m):
                 $this->dnsttPassword();
                 break;
-            case preg_match('~^/getLog (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-                $this->getLog(...explode('_', $m['arg']));
+            // logs by file name (checked in logFile), not by position
+            case preg_match('~^/getLog ([\w.-]{1,48})$~', $this->input['callback'], $m):
+                $this->getLog($m[1]);
                 break;
-            case preg_match('~^/clearLog (?P<arg>\d+(?:_(?:-)?\d+)?)$~', $this->input['callback'], $m):
-                $this->clearLog(...explode('_', $m['arg']));
+            case preg_match('~^/clearLog ([\w.-]{1,48})$~', $this->input['callback'], $m):
+                $this->clearLog($m[1]);
                 break;
             case preg_match('~^/cleanLog$~', $this->input['callback'], $m):
                 $this->cleanLog();
@@ -357,11 +358,12 @@ class Bot
             case preg_match('~^/addXrUser$~', $this->input['callback'], $m):
                 $this->addXrUser();
                 break;
-            case preg_match('~^/renameXrUser (\d+)$~', $this->input['callback'], $m):
-                $this->renameXrUser($m[1]);
+            // Xray users by their id (stable across on/off), not by position
+            case preg_match('~^/renameXrUser ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->renameXrUser($m[1]));
                 break;
-            case preg_match('~^/resetXrUser (\d+)$~', $this->input['callback'], $m):
-                $this->resetXrUser($m[1]);
+            case preg_match('~^/resetXrUser ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->resetXrUser($i));
                 break;
             case preg_match('~^/resetXrStats$~', $this->input['callback'], $m):
                 $this->resetXrStats();
@@ -396,29 +398,31 @@ class Bot
             case preg_match('~^/deletessl$~', $this->input['callback'], $m):
                 $this->deleteSSL();
                 break;
-            case preg_match('~^/deloc (\d+)$~', $this->input['callback'], $m):
+            // OpenConnect users by shortId() of the name
+            case preg_match('~^/deloc ([0-9a-f]{10})$~', $this->input['callback'], $m):
                 $this->deloc($m[1]);
                 break;
-            case preg_match('~^/ocUser (\d+)$~', $this->input['callback'], $m):
-                $this->ocUser((int) $m[1]);
+            case preg_match('~^/ocUser ([0-9a-f]{10})$~', $this->input['callback'], $m):
+                $this->ocUser($m[1]);
                 break;
-            case preg_match('~^/renameOcUser (\d+)$~', $this->input['callback'], $m):
-                $this->renameOcUser((int) $m[1]);
+            case preg_match('~^/renameOcUser ([0-9a-f]{10})$~', $this->input['callback'], $m):
+                $this->renameOcUser($m[1]);
                 break;
-            case preg_match('~^/userXr (\d+)$~', $this->input['callback'], $m):
-                $this->userXr($m[1]);
+            case preg_match('~^/userXr ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->userXr($i));
                 break;
-            case preg_match('~^/choiceTemplate (.+)$~', $this->input['callback'], $m):
-                $this->choiceTemplate($m[1]);
+            // /chT s|c <user id> d (default) | o (origin) | <template id>
+            case preg_match('~^/chT ([sc]) ([\w-]{1,40}) (d|o|[0-9a-f]{10})$~', $this->input['callback'], $m):
+                $this->withXr($m[2], fn($i) => $this->choiceTemplate($m[1] == 's' ? 'sing' : 'clash', $i, $m[3]));
                 break;
-            case preg_match('~^/templateUser (sing|clash) (\d+)$~', $this->input['callback'], $m):
-                $this->templateUser($m[1], $m[2]);
+            case preg_match('~^/templateUser (sing|clash) ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[2], fn($i) => $this->templateUser($m[1], $i));
                 break;
-            case preg_match('~^/switchXr (\d+)$~', $this->input['callback'], $m):
-                $this->switchXr($m[1]);
+            case preg_match('~^/switchXr ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->switchXr($i));
                 break;
-            case preg_match('~^/delxr (\d+)$~', $this->input['callback'], $m):
-                $this->delxr($m[1]);
+            case preg_match('~^/delxr ([\w-]{1,40})$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->delxr($i));
                 break;
             case preg_match('~^/listXr (\d+)$~', $this->input['callback'], $m):
                 $this->listXr($m[1]);
@@ -432,10 +436,10 @@ class Bot
             case preg_match('~^/renameAdmin (\d+)$~', $this->input['callback'], $m):
                 $this->renameAdmin($m[1]);
                 break;
-            case preg_match('~^/qrXray (\d+)(?:_(\d+))?$~', $this->input['callback'], $m):
-                $this->qrXray($m[1], $m[2] ?: false);
+            case preg_match('~^/qrXray ([\w-]{1,40})(?:_(\d+))?$~', $this->input['callback'], $m):
+                $this->withXr($m[1], fn($i) => $this->qrXray($i, ($m[2] ?? '') ?: false));
                 break;
-            case preg_match('~^/delupstream (\d+)$~', $this->input['callback'], $m):
+            case preg_match('~^/delupstream ([0-9a-f]{10})$~', $this->input['callback'], $m):
                 $this->delupstream($m[1]);
                 break;
             case preg_match('~^/deldomain$~', $this->input['callback'], $m):
@@ -444,7 +448,7 @@ class Bot
             case preg_match('~^/addNipdomain$~', $this->input['callback'], $m):
                 $this->addNipdomain();
                 break;
-            case preg_match('~^/(?P<action>change|delete)(?P<typelist>includelist|blocklist|warplist|rulessetlist|white|deny) (?P<arg>\d+)(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
+            case preg_match('~^/(?P<action>change|delete)(?P<typelist>includelist|blocklist|warplist|rulessetlist|white|deny) (?P<arg>[0-9a-f]{10})(?: (?P<page>\d+))?$~', $this->input['callback'], $m):
                 $this->listPacChange($m['typelist'], $m['action'], $m['arg'], $m['page'] ?: 0);
                 break;
             case preg_match('~^/domain$~', $this->input['callback'], $m):
@@ -916,7 +920,8 @@ class Bot
         ];
     }
 
-    public function renameXrUser($i)
+    // $uid: the user's id (renXrUs finds the user again by it)
+    public function renameXrUser($uid)
     {
         $r = $this->send(
             $this->input['chat'],
@@ -928,7 +933,7 @@ class Bot
             'start_message'  => $this->input['message_id'],
             'start_callback' => $this->input['callback_id'],
             'callback'       => 'renXrUs',
-            'args'           => [$i],
+            'args'           => [$uid],
         ];
     }
 
@@ -2724,8 +2729,19 @@ class Bot
         $this->menu('adguard');
     }
 
-    public function delupstream($k)
+    // $id: shortId() of the upstream; one removed meanwhile changes nothing
+    public function delupstream($id)
     {
+        $c = $this->getAdguard();
+        $k = null;
+        foreach ($c['dns']['upstream_dns'] ?? [] as $n => $v) {
+            if ($id === $this->shortId((string) $v)) {
+                $k = $n;
+            }
+        }
+        if ($k === null) {
+            return $this->menu('adguard');
+        }
         $out[] = 'Restart Adguard Home';
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         $this->stopAd();
@@ -3201,11 +3217,11 @@ class Bot
                 $data[] = [
                     [
                         'text'          => $this->i18n($v ? 'on' : 'off') . ' ' . ($basename ? basename($k) . ' ' : '') . ($type == 'rulessetlist' ? $k : idn_to_utf8($k)),
-                        'callback_data' => "/change$type " . ($i + $page * $this->limit) . " $page",
+                        'callback_data' => "/change$type " . $this->shortId((string) $k) . " $page",
                     ],
                     [
                         'text'          => $this->i18n('delete'),
-                        'callback_data' => "/delete$type " . ($i + $page * $this->limit) . " $page",
+                        'callback_data' => "/delete$type " . $this->shortId((string) $k) . " $page",
                     ],
                 ];
                 $i++;
@@ -3251,12 +3267,12 @@ class Bot
         return [$data, $text];
     }
 
-    public function listPacChange($type, $action, $key, $page = 0)
+    // $id: shortId() of the entry; an entry removed meanwhile changes nothing
+    public function listPacChange($type, $action, $id, $page = 0)
     {
         $conf = $this->getPacConf();
-        $i = 0;
-        foreach ($conf[$type] as $k => $v) {
-            if ($key == $i) {
+        foreach ($conf[$type] ?? [] as $k => $v) {
+            if ($id === $this->shortId((string) $k)) {
                 switch ($action) {
                     case 'change':
                         $conf[$type][$k] = !$v;
@@ -3267,12 +3283,17 @@ class Bot
                 }
                 break;
             }
-            $i++;
         }
         $this->setPacConf($conf);
         $this->backXtlsList($type, $page);
     }
 
+
+    // a short id that stays the same for a value (button data: 64 bytes at most)
+    public function shortId(string $v): string
+    {
+        return substr(hash('sha256', $v), 0, 10);
+    }
 
     public function i18n(string $menu): string
     {
@@ -3877,7 +3898,7 @@ class Bot
                 $data[] = [
                     [
                         'text'          => $k,
-                        'callback_data' => "/searchLogs $k analysisIp $page 0",
+                        'callback_data' => "/searchLogs $k a $page 0",
                     ]
                 ];
             }
@@ -3946,7 +3967,7 @@ class Bot
                 $data[] = [
                     [
                         'text'          => $this->i18n('back'),
-                        'callback_data' => "/$fun $page" . ($white ? " $white" : ''),
+                        'callback_data' => $this->ipBackData($fun, $page, $white),
                     ],
                 ];
                 $this->update($this->input['from'], $this->input['message_id'], $text, button: $data);
@@ -4092,7 +4113,7 @@ class Bot
                 $data[] = [
                     [
                         'text'          => $v,
-                        'callback_data' => "/searchLogs $v denyList $page $white",
+                        'callback_data' => "/searchLogs $v d $page $white",
                     ],
                     [
                         'text'          => $this->i18n('delete'),
@@ -4147,8 +4168,34 @@ class Bot
         $this->ipMenu();
     }
 
+    /**
+     * The menu to go back to after a button in an IP card: a short code in
+     * the button data (a analysis, d block/ignore list), a known method
+     * only, never a name taken from the data as it is.
+     */
+    public function ipBack($fun, $page = 0, $white = 0)
+    {
+        switch ($fun) {
+            case 'a':
+            case 'analysisIp':
+                return $this->analysisIp((int) $page);
+            case 'd':
+            case 'denyList':
+                return $this->denyList((int) $page, (int) $white);
+        }
+    }
+
+    // the callback that opens that menu
+    public function ipBackData($fun, $page = 0, $white = 0): string
+    {
+        return in_array($fun, ['d', 'denyList'], true) ? "/denyList $page " . ($white ? 1 : 0) : "/analysisIp $page";
+    }
+
     public function denyIp($ip, $fun = false, $page = 0, $white = 0)
     {
+        if (!is_array($ip) && !$this->validIpOrCidr($ip)) {
+            return $this->answer($this->input['callback_id'], 'wrong IP', true);
+        }
         $pac = $this->getPacConf();
         if (is_array($ip)) {
             foreach ($ip as $v) {
@@ -4169,12 +4216,15 @@ class Bot
         }
         $this->syncDeny();
         if (!empty($fun)) {
-            $this->{$fun}($page, $white);
+            $this->ipBack($fun, $page, $white);
         }
     }
 
     public function whiteIp($ip, $fun = false, $page = 0, $white = 0)
     {
+        if (!is_array($ip) && !$this->validIpOrCidr($ip)) {
+            return $this->answer($this->input['callback_id'], 'wrong IP', true);
+        }
         $pac = $this->getPacConf();
         if (is_array($ip)) {
             foreach ($ip as $v) {
@@ -4195,16 +4245,21 @@ class Bot
         }
         $this->syncDeny();
         if (!empty($fun)) {
-            $this->{$fun}($page, $white);
+            $this->ipBack($fun, $page, $white);
         }
     }
 
     public function allowIp($ip, $page, $white = 0)
     {
-        $pac = $this->getPacConf();
-        unset($pac[$white ? 'white' : 'deny'][array_search($ip, $pac[$white ? 'white' : 'deny'])]);
-        $this->setPacConf($pac);
-        $this->syncDeny();
+        $pac  = $this->getPacConf();
+        $list = $white ? 'white' : 'deny';
+        // only this address: array_search gives false for one removed meanwhile
+        if (($k = array_search($ip, $pac[$list] ?? [], true)) !== false) {
+            unset($pac[$list][$k]);
+            $pac[$list] = array_values($pac[$list]);
+            $this->setPacConf($pac);
+            $this->syncDeny();
+        }
         $this->denyList($page, $white);
     }
 
@@ -4524,11 +4579,11 @@ class Bot
             $data[] = [
                 [
                     'text'          => $v,
-                    'callback_data' => "/ocUser $k",
+                    'callback_data' => '/ocUser ' . $this->shortId($v),
                 ],
                 [
                     'text'          => $this->i18n('delete'),
-                    'callback_data' => "/deloc $k",
+                    'callback_data' => '/deloc ' . $this->shortId($v),
                 ],
             ];
         }
@@ -4545,21 +4600,31 @@ class Bot
     }
 
 
-    public function ocUser(int $i)
+    // the OpenConnect user with this shortId() of the name, null if gone
+    public function ocName(string $id): ?string
     {
-        $clients = $this->getClientsOc();
-        if (!isset($clients[$i])) {
+        foreach ($this->getClientsOc() as $v) {
+            if ($id === $this->shortId($v)) {
+                return $v;
+            }
+        }
+        return null;
+    }
+
+    public function ocUser(string $id)
+    {
+        if (($name = $this->ocName($id)) === null) {
             return $this->menu('oc');
         }
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
-            $this->i18n('Menu') . ' -> ' . $this->i18n('ocserv') . ' -> ' . htmlspecialchars($clients[$i]),
+            $this->i18n('Menu') . ' -> ' . $this->i18n('ocserv') . ' -> ' . htmlspecialchars($name),
             [
                 [
                     [
                         'text'          => $this->i18n('rename'),
-                        'callback_data' => "/renameOcUser $i",
+                        'callback_data' => "/renameOcUser $id",
                     ],
                 ],
                 [
@@ -4572,7 +4637,7 @@ class Bot
         );
     }
 
-    public function renameOcUser(int $i)
+    public function renameOcUser(string $i)
     {
         $r = $this->send(
             $this->input['chat'],
@@ -4591,15 +4656,15 @@ class Bot
     // all OpenConnect users share one password: the new name gets it, the old one is removed
     public function renOcUs($name, $i)
     {
-        $clients = $this->getClientsOc();
-        if (!isset($clients[$i])) {
+        if (($old = $this->ocName((string) $i)) === null) {
             return $this->menu('oc');
         }
+        $clients = $this->getClientsOc();
         if (!preg_match('~^[A-Za-z0-9._@-]{1,64}$~D', $name = trim((string) $name))) {
             $this->send($this->input['chat'], 'wrong name: A-Z a-z 0-9 . _ @ -');
             return $this->ocUser($i);
         }
-        if ($name === $clients[$i]) {
+        if ($name === $old) {
             return $this->ocUser($i);
         }
         if (in_array($name, $clients, true)) {
@@ -4611,21 +4676,44 @@ class Bot
             $this->send($this->input['chat'], 'set the OpenConnect password first');
             return $this->ocUser($i);
         }
-        $this->ocPasswd([$name => $pac['ocserv']], [$clients[$i]]);
-        $k = array_search($name, $this->getClientsOc(), true);
-        return $k === false ? $this->menu('oc') : $this->ocUser((int) $k);
+        $this->ocPasswd([$name => $pac['ocserv']], [$old]);
+        return $this->ocUser($this->shortId($name));
     }
 
-    public function deloc($i)
+    public function deloc($id)
     {
-        $clients = $this->getClientsOc();
-        foreach ($clients as $k => $v) {
-            if ($i == $k) {
-                $this->ocPasswd([], [$v]);
-                break;
-            }
+        if (($name = $this->ocName((string) $id)) !== null) {
+            $this->ocPasswd([], [$name]);
         }
         $this->menu('oc');
+    }
+
+    // an Xray user's own id: the one in "off" while switched off
+    public function xrUid(array $client): string
+    {
+        return (string) (($client['off'] ?? '') ?: ($client['id'] ?? ''));
+    }
+
+    // position of the user with this id in the client list, null if gone
+    public function xrIndex(string $uid): ?int
+    {
+        foreach ($this->getXray()['inbounds'][0]['settings']['clients'] ?? [] as $k => $v) {
+            if ($uid !== '' && hash_equals($this->xrUid($v), $uid)) {
+                return (int) $k;
+            }
+        }
+        return null;
+    }
+
+    // $fn with the user's position; a user deleted meanwhile: back to the list
+    public function withXr(string $uid, callable $fn)
+    {
+        $i = $this->xrIndex($uid);
+        if ($i === null) {
+            $this->answer($this->input['callback_id'], 'no such user', true);
+            return $this->xray();
+        }
+        return $fn($i);
     }
 
     public function delxr($i)
@@ -4749,8 +4837,11 @@ class Bot
         }
     }
 
-    public function renXrUs($name, $i)
+    public function renXrUs($name, $uid)
     {
+        if (($i = $this->xrIndex((string) $uid)) === null) {
+            return $this->xray();
+        }
         if (!$this->validName($name = trim((string) $name))) {
             $this->send($this->input['chat'], 'wrong name: letters, digits, emoji, space . _ @ -');
             return $this->userXr($i);
@@ -5254,7 +5345,7 @@ class Bot
             $data[]   = [
                 [
                     'text'          => "{$v['email']} (↓$download  ↑$upload)",
-                    'callback_data' => "/userXr $k",
+                    'callback_data' => '/userXr ' . $this->xrUid($v),
                 ],
             ];
         }
@@ -5568,10 +5659,11 @@ class Bot
                     if (empty($v['off']) && $v['email'] == $m['email']) {
                         $c = $this->config();
                         foreach ($c['admin'] as $admin) {
+                            // the button shows the user's state (on): pressing it switches the user off
                             $this->send($admin, "vless: {$m['email']} limit ip " . count($this->pool[$m['email']]['ips']) . ' > ' . ($pac['ip_count'] ?: 1), button: [[
                                 [
-                                    'text'          => $this->i18n($c['off'] ? 'off' : 'on'),
-                                    'callback_data' => "/switchXr $k",
+                                    'text'          => $this->i18n(!empty($v['off']) ? 'off' : 'on') . ' ' . $this->i18n(!empty($v['off']) ? 'state off' : 'state on'),
+                                    'callback_data' => '/switchXr ' . $this->xrUid($v),
                                 ],
                             ]]);
                         }
@@ -5615,17 +5707,39 @@ class Bot
         );
     }
 
-    public function choiceTemplate($arg)
+    /**
+     * The user's template: $tid 'd' the default, 'o' the built-in one, or
+     * the id of a named template (templateId). Stored as before: base64 of
+     * the name.
+     */
+    public function choiceTemplate($type, $i, $tid)
     {
-        $arg = explode('_', $arg);
-        $c   = $this->getXray();
-        if (!empty($arg[2])) {
-            $c['inbounds'][0]['settings']['clients'][$arg[1]]["{$arg[0]}template"] = $arg[2];
+        $c = $this->getXray();
+        if (!isset($c['inbounds'][0]['settings']['clients'][$i])) {
+            return $this->xray();
+        }
+        $name = $tid === 'o' ? 'origin' : null;
+        foreach (array_keys($this->getTemplates($type)) as $k) {
+            if ($tid === $this->templateId((string) $k)) {
+                $name = (string) $k;
+            }
+        }
+        if ($name !== null) {
+            $c['inbounds'][0]['settings']['clients'][$i]["{$type}template"] = base64_encode($name);
+        } elseif ($tid === 'd') {
+            unset($c['inbounds'][0]['settings']['clients'][$i]["{$type}template"]);
         } else {
-            unset($c['inbounds'][0]['settings']['clients'][$arg[1]]["{$arg[0]}template"]);
+            // the template was deleted meanwhile
+            return $this->templateUser($type, $i);
         }
         $this->saveXray($c);
-        $this->userXr($arg[1]);
+        $this->userXr($i);
+    }
+
+    // short id of a template name for button data (64 bytes at most)
+    public function templateId(string $name): string
+    {
+        return substr(hash('sha256', $name), 0, 10);
     }
 
     public function templateUser($type, $i)
@@ -5635,30 +5749,32 @@ class Bot
         $pac["{$type}templates"] = $this->getTemplates($type);
         $text[]    = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . " -> {$c['inbounds'][0]['settings']['clients'][$i]['email']}\n";
         $templates = $pac["{$type}templates"];
+        $uid       = $this->xrUid($c['inbounds'][0]['settings']['clients'][$i] ?? []);
+        $t         = $type == 'sing' ? 's' : 'c';
         $data[]    = [
             [
                 'text'          => $this->i18n('default'),
-                'callback_data' => "/choiceTemplate {$type}_$i",
+                'callback_data' => "/chT $t $uid d",
             ],
         ];
         $data[] = [
             [
                 'text'          => $this->i18n('origin'),
-                'callback_data' => "/choiceTemplate {$type}_{$i}_" . base64_encode('origin'),
+                'callback_data' => "/chT $t $uid o",
             ],
         ];
         foreach ($templates ?: [] as $k => $v) {
             $data[] = [
                 [
                     'text'          => $k,
-                    'callback_data' => "/choiceTemplate {$type}_{$i}_" . base64_encode($k),
+                    'callback_data' => "/chT $t $uid " . $this->templateId((string) $k),
                 ],
             ];
         }
         $data[] = [
             [
                 'text'          => $this->i18n('back'),
-                'callback_data' => "/userXr $i",
+                'callback_data' => "/userXr $uid",
             ],
         ];
         $this->update(
@@ -5708,12 +5824,13 @@ class Bot
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=cl&r=c&s={$c['id']}#$name'>import://mihomo</a>";
         $text[] = "<a href='$scheme://{$domain}/pac$hash?t=hp&r=hp&s={$c['id']}#$name'>import://happ</a>";
 
+        $uid      = $this->xrUid($c);
         $st       = $this->getXrayStats();
         [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $c));
         $data[]   = [
             [
                 'text'          => $this->i18n('reset stats') . ": ↓$download  ↑$upload",
-                'callback_data' => "/resetXrUser $i",
+                'callback_data' => "/resetXrUser $uid",
             ],
         ];
         $data[] = array_values(array_filter([
@@ -5731,34 +5848,34 @@ class Bot
         $data[]        = array_values(array_filter([
             $sing ? [
                 'text'          => $this->i18n('singbox') . ": $singtemplate",
-                'callback_data' => "/templateUser sing $i",
+                'callback_data' => "/templateUser sing $uid",
             ] : null,
             [
                 'text'          => $this->i18n('mihomo') . ": $clashtemplate",
-                'callback_data' => "/templateUser clash $i",
+                'callback_data' => "/templateUser clash $uid",
             ],
         ]));
         if ($sing) {
             $data[] = [
                 [
                     'text'          => $this->i18n('qr singbox'),
-                    'callback_data' => "/qrXray {$i}_2",
+                    'callback_data' => "/qrXray {$uid}_2",
                 ],
             ];
         }
         $data[] = [
             [
                 'text'          => $this->i18n('rename'),
-                'callback_data' => "/renameXrUser $i",
+                'callback_data' => "/renameXrUser $uid",
             ],
             [
                 // the user's state, pressing it switches the user on/off
                 'text'          => $this->i18n($c['off'] ? 'off' : 'on') . ' ' . $this->i18n($c['off'] ? 'state off' : 'state on'),
-                'callback_data' => "/switchXr $i",
+                'callback_data' => "/switchXr $uid",
             ],
             [
                 'text'          => $this->i18n('delete'),
-                'callback_data' => "/delxr $i",
+                'callback_data' => "/delxr $uid",
             ],
         ];
         $data[] = [
@@ -6823,7 +6940,7 @@ class Bot
                     ],
                     [
                         'text'          => $this->i18n('delete'),
-                        'callback_data' => "/delupstream $k",
+                        'callback_data' => '/delupstream ' . $this->shortId((string) $v),
                     ],
                 ];
             }
@@ -7333,11 +7450,11 @@ class Bot
                 $data[] = [
                     [
                         'text'          => "$size $v",
-                        'callback_data' => "/getLog $k",
+                        'callback_data' => "/getLog $v",
                     ],
                     [
                         'text'          => $this->i18n('clean'),
-                        'callback_data' => "/clearLog $k",
+                        'callback_data' => "/clearLog $v",
                     ],
                 ];
             }
@@ -7376,26 +7493,28 @@ class Bot
         );
     }
 
-    public function getLog($i)
+    // a log in /logs by its name: a plain file there, not a dot file
+    public function logFile($name): ?string
     {
-        foreach (scandir('/logs/') as $k => $v) {
-            if (!preg_match('~^\.~', $v)) {
-                $logs[$k] = $v;
-            }
+        $name = (string) $name;
+        return preg_match('~^[\w-][\w.-]{0,47}$~D', $name) && is_file("/logs/$name") && !is_link("/logs/$name") ? "/logs/$name" : null;
+    }
+
+    public function getLog($name)
+    {
+        if (($f = $this->logFile($name)) === null) {
+            return $this->logs();
         }
         $this->sendFile(
             $this->input['chat'],
-            curl_file_create("/logs/{$logs[$i]}"),
+            curl_file_create($f),
         );
     }
 
-    public function clearLog($i)
+    public function clearLog($name)
     {
-        foreach (scandir('/logs/') as $k => $v) {
-            if ($i == $k) {
-                file_put_contents("/logs/$v", '');
-                break;
-            }
+        if (($f = $this->logFile($name)) !== null) {
+            file_put_contents($f, '');
         }
         $this->logs();
     }
