@@ -5759,11 +5759,14 @@ class Bot
 
     /**
      * New WARP account, profile and keys (wgcf register / generate), with
-     * the WARP+ license key if given. WARP is down for a few seconds.
+     * the WARP+ license key if given ("+": the current key, "-": none). It
+     * is all made in /etc/warp/new first: only when everything worked does
+     * it replace the running profile, and if WireGuard does not come up
+     * with it, the previous profile goes back. The account file and the
+     * profile never go into the chat.
      */
     public function addWarpPlus($key)
     {
-        $c    = $this->getPacConf();
         $chat = $this->input['chat'];
         $log  = '';
         $key  = trim((string) $key);
@@ -5773,72 +5776,55 @@ class Bot
         } elseif ($key === '-') {
             $key = '';
         }
-        // checked before anything is torn down: the key goes into a sed
+        // checked before anything starts: the key goes into a sed
         // expression, WARP+ keys are letters, digits and dashes
         if ($key !== '' && !preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key)) {
             $this->send($chat, 'wrong license key');
             return $this->warp();
         }
 
-        $step = function($label, $cmd, $container) use ($chat, &$log) {
+        // a step in the wp container: the error (exit code, stderr) is shown, not the output
+        $step = function ($label, $cmd) use ($chat, &$log) {
             $log .= "$label...";
             $this->sendDraft($chat, 1, $log);
-            $out = trim($this->ssh($cmd, $container));
-            $log .= $out ? "\n" . htmlspecialchars($out) . "\n" : " ok\n";
+            $r  = $this->sshRun($cmd, 'wp');
+            $ok = $r['rc'] === 0;
+            $log .= $ok ? " ok\n" : "\n" . htmlspecialchars(trim($r['err']) ?: ($r['rc'] === null ? 'no connection to wp' : "exit code {$r['rc']}")) . "\n";
             $this->sendDraft($chat, 1, $log);
-            return empty($out); // true = success (no output = exit 0)
+            return $ok;
+        };
+        $fail = function () use ($chat, &$log) {
+            $this->ssh('rm -rf /etc/warp/new', 'wp');
+            $this->send($chat, $log . "\nnothing changed: WARP runs with the previous profile");
         };
 
-        if (!$step('stopping warp', 'wg-quick down /etc/warp/wgcf-profile.conf 2>/dev/null || true', 'wp')) {
-            $this->send($chat, $log);
-            return;
+        $d = '/etc/warp/new';
+        if (!$step('registering a new WARP account', "rm -rf $d && mkdir -p $d && cd $d && wgcf register --accept-tos > /dev/null")) {
+            return $fail();
         }
-
-        // Удаляем старые профиль и аккаунт
-        if (!$step('removing old profile', 'rm -f /etc/warp/wgcf-profile.conf /etc/warp/wgcf-account.toml', 'wp')) {
-            $this->send($chat, $log);
-            return;
+        if ($key !== '' && !$step('applying the license key', "cd $d && sed -i 's/^license_key.*/license_key = \"$key\"/' wgcf-account.toml && wgcf update > /dev/null")) {
+            return $fail();
         }
-
-        // Регистрируем новый аккаунт
-        if (!$step('[warp] Registering WARP account...', 'cd /etc/warp && wgcf register --accept-tos', 'wp')) {
-            $this->send($chat, $log);
-            return;
+        // no IPv6 (the container has none) and no DNS line (see start_wp.sh)
+        if (!$step('generating the profile', "cd $d && wgcf generate > /dev/null && sed -i '/^Address.*:/d; /^AllowedIPs.*::/d; /^DNS *=/d' wgcf-profile.conf")) {
+            return $fail();
         }
-
-        if (!empty($key)) {
-            $this->setSecret('warp', $key);
-            // Заменяем ключ в wgcf-account.toml
-            if (!$step('setting license key', "sed -i 's/^license_key.*/license_key = \"$key\"/' /etc/warp/wgcf-account.toml", 'wp')) {
-                $this->send($chat, $log);
-                return;
+        $up = 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl" >&2; exit $ec';
+        // the previous profile stays in old/ until the new one is up
+        // (start_wp.sh goes back to it if the container restarts meanwhile)
+        if (!$step('switching to the new profile', 'cd /etc/warp && wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; rm -rf old && mkdir old && { [ ! -f wgcf-profile.conf ] || cp -p wgcf-account.toml wgcf-profile.conf old/; } && mv new/wgcf-account.toml new/wgcf-profile.conf . && rmdir new')
+            || !$step('starting warp', $up)) {
+            // the new profile does not work here: the previous one back
+            if ($step('back to the previous profile', 'cd /etc/warp && wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; rm -rf new; [ ! -f old/wgcf-profile.conf ] || cp -p old/wgcf-account.toml old/wgcf-profile.conf . ; ' . $up)) {
+                $this->ssh('rm -rf /etc/warp/old', 'wp');
             }
-            // Обновляем аккаунт с ключом
-            if (!$step('applying license key', 'cd /etc/warp && wgcf update', 'wp')) {
-                $this->send($chat, $log);
-                return;
-            }
-        } else {
-            $this->setSecret('warp', null);
+            $this->send($chat, $log);
+            return $this->warp();
         }
-        $this->setPacConf($c);
+        $this->ssh('rm -rf /etc/warp/old', 'wp');
+        $this->setSecret('warp', $key !== '' ? $key : null);
         $this->writeWarpKey();
-
-        if (!$step('generating profile', 'cd /etc/warp && wgcf generate', 'wp')) {
-            $this->send($chat, $log);
-            return;
-        }
-        $this->ssh("sed -i '/^Address.*:/d' /etc/warp/wgcf-profile.conf", 'wp');
-        $this->ssh("sed -i '/^AllowedIPs.*::/d' /etc/warp/wgcf-profile.conf", 'wp');
-        // see start_wp.sh: resolvconf cannot work in the container
-        $this->ssh("sed -i '/^DNS *=/d' /etc/warp/wgcf-profile.conf", 'wp');
-
-        $started = $step('starting warp', 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl"; exit $ec', 'wp');
-
-        if (!$started) {
-            $this->send($chat, $log);
-            return;
-        }
+        $this->syncWarpProfile();
 
         sleep(1);
         // sendMessageDraft closes only when sendMessage is called — send a dummy and delete it
