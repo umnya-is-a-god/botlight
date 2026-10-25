@@ -1,6 +1,10 @@
 <?php
 
 $i = [
+    'days'                 => [
+        'en' => 'days',
+        'ru' => 'дней',
+    ],
     'secrets'              => [
         'en' => 'secrets',
         'ru' => 'секреты',

@@ -31,6 +31,7 @@ RUN apk upgrade --no-cache \
     php83-sodium \
     xxd \
     certbot \
+    logrotate \
     libqrencode-tools \
     openssh \
     openssl \

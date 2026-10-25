@@ -43,6 +43,7 @@ class Bot
     // messages to delete later: [chat, message id, time]
     public $later = [];
     public $time_warp_profile;
+    public $time_logrotate;
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -253,6 +254,9 @@ class Bot
                 break;
             case preg_match('~^/allowIp (.+?) (\d+)(?:\s(\d+))?$~', $this->input['callback'], $m):
                 $this->allowIp($m[1], $m[2], $m[3]);
+                break;
+            case preg_match('~^/ipInfo ([0-9A-Fa-f:.]{3,45})$~', $this->input['callback'], $m):
+                $this->ipInfo($m[1]);
                 break;
             case preg_match('~^/searchIp (.+)$~', $this->input['callback'], $m):
                 $this->searchIp($m[1]);
@@ -513,9 +517,6 @@ class Bot
             case preg_match('~^/changeFakeDomain$~', $this->input['callback'], $m):
                 $this->changeFakeDomain();
                 break;
-            case preg_match('~^/autoCleanLogs$~', $this->input['callback'], $m):
-                $this->autoCleanLogs();
-                break;
             case preg_match('~^/selfFakeDomain$~', $this->input['callback'], $m):
                 $this->selfFakeDomain();
                 break;
@@ -757,6 +758,11 @@ class Bot
     {
         $this->dataPermissions();
         $pac = $this->getPacConf();
+        // the log cleaning schedule of earlier versions: logs rotate now
+        if (array_key_exists('autocleanlogs', $pac) || array_key_exists('last_clean_logs_time', $pac)) {
+            unset($pac['autocleanlogs'], $pac['last_clean_logs_time']);
+            $this->setPacConf($pac);
+        }
         if (isset($pac['singtemplates']) || isset($pac['clashtemplates']) || array_intersect_key($pac, array_flip(['adpswd', 'ocserv', 'dnsttPassword', 'warp', 'backup_password'])) || isset($pac['reality']['privateKey'])) {
             // templates and secrets of earlier versions, kept in the settings
             $this->importPac($pac);
@@ -1142,7 +1148,7 @@ class Bot
             foreach ([
                 'checkVersion',
                 'checkBackup',
-                'checkLogs',
+                'rotateLogs',
                 'checkResetXrayStats',
                 'checkCert',
                 'checkCertRenew',
@@ -1416,39 +1422,6 @@ class Bot
         }
     }
 
-    public function checkLogs()
-    {
-        $c = $this->getPacConf();
-        if (!empty($c['autocleanlogs'])) {
-            $now = time();
-            [$start, $period] = explode('/', $c['autocleanlogs']);
-            $start  = strtotime(trim($start));
-            $period = strtotime(trim($period), 0);
-
-            if (
-                !empty($start)
-                && !empty($period)
-                && $now >= $start
-            ) {
-                // Вычисляем, сколько полных периодов прошло с момента start
-                $elapsed = $now - $start;
-                $periodsElapsed = floor($elapsed / $period);
-
-                // Время последней плановой очистки логов
-                $lastScheduledClean = $start + ($periodsElapsed * $period);
-
-                // Проверяем, делали ли уже очистку в этом периоде
-                $lastCleanTime = $c['last_clean_logs_time'] ?? 0;
-
-                // Если последняя очистка была сделана до начала текущего периода - делаем очистку
-                if ($lastCleanTime < $lastScheduledClean) {
-                    $c['last_clean_logs_time'] = $now;
-                    $this->setPacConf($c);
-                    $this->cleanLog();
-                }
-            }
-        }
-    }
 
     public function cleanQueue(): void
     {
@@ -4065,9 +4038,15 @@ class Bot
 
     public function searchLogs($search, $fun = false, $page = 0, $white = 0)
     {
-        if (preg_match('~^\d+\.\d+\.\d+\.\d+$~D', $search)) {
-            $info = file_get_contents("https://ipinfo.io/$search/json", context: stream_context_create(['http' => ['timeout' => 2]]));
-            $text = "$search\n<pre>" . htmlspecialchars((string) $info) . "</pre>";
+        if (filter_var($search, FILTER_VALIDATE_IP)) {
+            // nothing goes to ipinfo.io unless the ipinfo button is pressed
+            $text = "<code>$search</code>";
+            $data[] = [
+                [
+                    'text'          => 'ipinfo.io',
+                    'callback_data' => "/ipInfo $search",
+                ],
+            ];
             $data[] = [
                 [
                     'text'          => $this->i18n('block'),
@@ -4111,13 +4090,24 @@ class Bot
         }
     }
 
+    // what ipinfo.io knows about the address: only on the button
+    public function ipInfo($ip)
+    {
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return;
+        }
+        $info = @file_get_contents("https://ipinfo.io/$ip/json", context: stream_context_create(['http' => ['timeout' => 3]]));
+        $this->send($this->input['chat'], "$ip\n<pre>" . htmlspecialchars((string) $info ?: 'no answer') . '</pre>', $this->input['message_id']);
+        $this->answer($this->input['callback_id']);
+    }
+
     public function searchIp($ip)
     {
         foreach ($this->logs as $v) {
             if ($r = fopen("/logs/$v", 'r')) {
                 while (feof($r) === false) {
                     $l = fgets($r);
-                    if (preg_match('~' . preg_quote($ip) . '~', $l)) {
+                    if (preg_match($this->ipRegex($ip), $l)) {
                         $res[$v][] = $l;
                     }
                 }
@@ -4394,14 +4384,37 @@ class Bot
         $this->denyList($page, $white);
     }
 
+    // a regex that finds the address itself, not a longer one containing it
+    public function ipRegex(string $ip): string
+    {
+        return strpos($ip, ':') !== false
+            ? '~(?<![0-9A-Fa-f:])' . preg_quote($ip, '~') . '(?![0-9A-Fa-f:])~'
+            : '~(?<![\d.])' . preg_quote($ip, '~') . '(?![\d])~';
+    }
+
     public function cleanLogs($ip, $nodelete = false)
     {
-        // drop lines containing $ip without passing it to a shell
-        foreach ($this->logs as $v) {
-            $f = "/logs/$v";
-            if (is_file($f) && $ip !== '') {
-                $lines = file($f) ?: [];
-                file_put_contents($f, implode('', array_filter($lines, fn($l) => strpos($l, $ip) === false)));
+        // drop lines with $ip line by line (logs can be large), without a
+        // shell; written back into the same file: nginx and Xray keep it open
+        if ($this->validIpOrCidr($ip) && strpos($ip, '/') === false) {
+            $re = $this->ipRegex($ip);
+            foreach ($this->logs as $v) {
+                $f = "/logs/$v";
+                if (!is_file($f) || !($in = fopen($f, 'r+'))) {
+                    continue;
+                }
+                $tmp = fopen('php://temp', 'w+');
+                while (($l = fgets($in)) !== false) {
+                    if (!preg_match($re, $l)) {
+                        fwrite($tmp, $l);
+                    }
+                }
+                ftruncate($in, 0);
+                rewind($in);
+                rewind($tmp);
+                stream_copy_to_stream($tmp, $in);
+                fclose($tmp);
+                fclose($in);
             }
         }
         if (empty($nodelete)) {
@@ -7741,42 +7754,36 @@ class Bot
         $this->menu('update');
     }
 
+    /**
+     * The logs, rotated by the cron loop (rotateLogs): a week, at most 50
+     * MB per file. The menu lists the current files; the size includes the
+     * rotated copies. Cleaning a log removes its copies too.
+     */
     public function logs()
     {
-        $p = $this->getPacConf();
-        foreach (scandir('/logs/') as $k => $v) {
-            if (!preg_match('~^\.~', $v)) {
-                $size   = filesize("/logs/$v");
-                $data[] = [
-                    [
-                        'text'          => "$size $v",
-                        'callback_data' => "/getLog $v",
-                    ],
-                    [
-                        'text'          => $this->i18n('clean'),
-                        'callback_data' => "/clearLog $v",
-                    ],
-                ];
+        foreach (scandir('/logs/') as $v) {
+            if ($this->logFile($v) === null || preg_match('~\.(\d+|\d+\.gz)$~', $v)) {
+                continue;
             }
+            $size = 0;
+            foreach (array_merge(["/logs/$v"], $this->logCopies($v)) as $f) {
+                $size += (int) @filesize($f);
+            }
+            $data[] = [
+                [
+                    'text'          => $this->getBytes($size) . " $v",
+                    'callback_data' => "/getLog $v",
+                ],
+                [
+                    'text'          => $this->i18n('clean'),
+                    'callback_data' => "/clearLog $v",
+                ],
+            ];
         }
         $data[] = [
             [
                 'text'          => $this->i18n('clean all'),
                 'callback_data' => "/cleanLog",
-            ],
-        ];
-        $autocleanlogs = array_filter(explode('/', (string) ($p['autocleanlogs'] ?? '')));
-        if (!empty($autocleanlogs)) {
-            if (!empty(strtotime($autocleanlogs[0])) && !empty(strtotime($autocleanlogs[1]))) {
-                $autocleanlogs = "{$autocleanlogs[0]} start / {$autocleanlogs[1]} period";
-            } else {
-                $autocleanlogs = $this->i18n('off') . " {$p['autocleanlogs']} - wrong format";
-            }
-        }
-        $data[] = [
-            [
-                'text'          => $this->i18n('autoclean'). ': ' . ($autocleanlogs ?: $this->i18n('off')),
-                'callback_data' => "/autoCleanLogs",
             ],
         ];
         $data[] = [
@@ -7788,9 +7795,28 @@ class Bot
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
-            implode("\n", ['...']),
+            $this->i18n('logs') . ': 7 ' . $this->i18n('days') . ', ≤ 50 MB',
             $data ?: false,
         );
+    }
+
+    // rotated copies of a log: name.1, name.2.gz ...
+    public function logCopies(string $name): array
+    {
+        return array_values(array_filter(glob('/logs/' . str_replace(['*', '?', '['], '', $name) . '.*') ?: [], fn($f) => preg_match('~\.(\d+|\d+\.gz)$~', $f) && is_file($f)));
+    }
+
+    // cron loop: logrotate (system/logrotate.conf) every 15 minutes
+    public function rotateLogs()
+    {
+        if (!empty($this->time_logrotate) && time() - $this->time_logrotate < 900) {
+            return;
+        }
+        $this->time_logrotate = time();
+        exec('logrotate -s ' . escapeshellarg(BOT_DATA . '/logrotate.status') . ' /system/logrotate.conf 2>&1', $out, $code);
+        if ($code) {
+            error_log('logrotate: ' . implode("\n", $out));
+        }
     }
 
     // a log in /logs by its name: a plain file there, not a dot file
@@ -7800,31 +7826,62 @@ class Bot
         return preg_match('~^[\w-][\w.-]{0,47}$~D', $name) && is_file("/logs/$name") && !is_link("/logs/$name") ? "/logs/$name" : null;
     }
 
+    /**
+     * A log as a file. Telegram takes files up to 50 MB: a bigger one is
+     * sent gzip-compressed, and if that is still too big, its last part.
+     */
     public function getLog($name)
     {
         if (($f = $this->logFile($name)) === null) {
             return $this->logs();
         }
-        $this->sendFile(
-            $this->input['chat'],
-            curl_file_create($f),
-        );
+        $limit = 45 * 1048576;
+        if (filesize($f) <= $limit) {
+            return $this->sendFile($this->input['chat'], curl_file_create($f));
+        }
+        $gz = tempnam(sys_get_temp_dir(), 'log');
+        foreach ([0, max(0, filesize($f) - 4 * $limit)] as $from) {
+            $in  = fopen($f, 'r');
+            $out = gzopen($gz, 'wb6');
+            fseek($in, $from);
+            if ($from > 0) {
+                fgets($in); // from the start of a line
+            }
+            while (!feof($in)) {
+                gzwrite($out, (string) fread($in, 1048576));
+            }
+            fclose($in);
+            gzclose($out);
+            clearstatcache();
+            if (filesize($gz) <= $limit) {
+                break;
+            }
+        }
+        $this->sendFile($this->input['chat'], curl_file_create($gz, 'application/gzip', basename($f) . ($from > 0 ? '.tail' : '') . '.gz'), $from > 0 ? 'the last part of the log' : false);
+        @unlink($gz);
     }
 
     public function clearLog($name)
     {
         if (($f = $this->logFile($name)) !== null) {
             file_put_contents($f, '');
+            foreach ($this->logCopies(basename($f)) as $c) {
+                @unlink($c);
+            }
         }
         $this->logs();
     }
 
     public function cleanLog()
     {
-        foreach (scandir('/logs/') as $k => $v) {
+        foreach (scandir('/logs/') as $v) {
             // the listed logs only: not . / .. or service files like .warp_status
-            if (!preg_match('~^\.~', $v) && is_file("/logs/$v")) {
-                file_put_contents("/logs/$v", '');
+            if ($this->logFile($v) !== null) {
+                if (preg_match('~\.(\d+|\d+\.gz)$~', $v)) {
+                    @unlink("/logs/$v");
+                } else {
+                    file_put_contents("/logs/$v", '');
+                }
             }
         }
         $this->logs();
@@ -7907,21 +7964,6 @@ class Bot
         ];
     }
 
-    public function autoCleanLogs()
-    {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter like: start / period'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter like: now / 12 hours'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setAutoCleanLogs',
-            'args'           => [],
-        ];
-    }
 
     public function changeFakeDomain()
     {
@@ -8088,23 +8130,6 @@ class Bot
         $this->menu('config');
     }
 
-    public function setAutoCleanLogs($text)
-    {
-        $text = trim($text);
-        $c    = $this->getPacConf();
-        if (empty($text)) {
-            $c['autocleanlogs'] = '';
-        } else {
-            [$start, $period] = explode('/', $text);
-            if (!empty(strtotime($start)) && !empty(strtotime($period))) {
-                $c['autocleanlogs'] = implode(' / ', [date('Y-m-d H:i', strtotime($start)), trim($period)]);
-            } else {
-                $this->send($this->input['from'], $this->input['message'] . ' - wrong format');
-            }
-        }
-        $this->setPacConf($c);
-        $this->logs();
-    }
 
     /**
      * Debug for 30 minutes (it turns itself off): the web pools log the
