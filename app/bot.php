@@ -744,7 +744,11 @@ class Bot
             $this->importPac($pac);
         }
         $this->getHashBot();
+        $this->getAdminHash();
         $this->getHashSubdomain('oc');
+        if (!is_file(BOT_DATA . '/ng/limit_exempt.conf')) {
+            bot_write(BOT_DATA . '/ng/limit_exempt.conf', $this->limitExemptConf());
+        }
         $this->saveXrayView($this->getXray());
         $this->writeWebSecrets();
         bot_write(BOT_DATA . '/up/upstream.conf', $this->upstreamConf(bot_read(BOT_DATA . '/up/upstream.conf')));
@@ -4270,6 +4274,24 @@ class Bot
         if ($ok) {
             $this->ssh(self::NGINX_UP . ' -s reload', 'up');
         }
+        // the ignorelist is also free of the request limits in ng
+        $ng = BOT_DATA . '/ng/nginx.conf';
+        if (is_file($ng)) {
+            bot_write("$ng.test", str_replace('include /etc/nginx/bot/limit_exempt.conf;', 'include /etc/nginx/bot/limit_exempt.conf.new;', bot_read($ng)));
+            $ok = $this->applyConfig(BOT_DATA . '/ng/limit_exempt.conf', $this->limitExemptConf(), 'ng', 'nginx -t -q -c /etc/nginx/bot/nginx.conf.test');
+            @unlink("$ng.test");
+            if ($ok) {
+                $this->ssh(self::NGINX_NG . ' -s reload', 'ng');
+            }
+        }
+    }
+
+    // geo entries for nginx: the ignorelist (with the bridge IP) has no request limits
+    public function limitExemptConf(): string
+    {
+        $pac = $this->getPacConf();
+        $ips = array_filter(array_merge($pac['white'] ?? [], [$pac['bridge'] ?? '']), [$this, 'validIpOrCidr']);
+        return implode('', array_map(fn($v) => "$v 1;\n", array_values(array_unique($ips))));
     }
 
     public function linkXray($i, $s = false)
@@ -4279,11 +4301,7 @@ class Bot
         $domain = $this->getDomain($pac['transport'] != 'Reality');
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
-        $si     = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 'si',
-            's' => $c['inbounds'][0]['settings']['clients'][$i]['id'],
-        ]));
+        $si     = $this->subLink($scheme, $domain, 'si', $c['inbounds'][0]['settings']['clients'][$i]['id']);
 
         switch ($s) {
             case 2:
@@ -4334,6 +4352,21 @@ class Bot
     }
 
 
+
+    /**
+     * Link of a sing-box/mihomo subscription or rule-set: the parameters in
+     * the last path part (sing-box import links cannot carry a query) as
+     * base64url JSON. Links of earlier versions (base64 of a PHP array)
+     * are still read by index.php.
+     */
+    public function subLink(string $scheme, string $domain, string $type, string $uid, ?string $rule = null): string
+    {
+        $p = ['t' => $type, 's' => $uid];
+        if ($rule !== null) {
+            $p['r'] = $rule;
+        }
+        return "$scheme://$domain/pac{$this->getHashBot()}/" . rtrim(strtr(base64_encode(json_encode($p, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)), '+/', '-_'), '=');
+    }
 
     public function mirrorMenu()
     {
@@ -5019,7 +5052,7 @@ class Bot
         $data[] = [
             [
                 'text'          => $this->i18n('origin'),
-                'web_app' => ['url' => "https://$domain/pac$hash?t=te&ty=$type"],
+                'web_app' => ['url' => "https://$domain/webapp{$this->getAdminHash()}/editor?ty=$type"],
             ],
             [
                 'text'          => $this->i18n('download'),
@@ -5038,7 +5071,7 @@ class Bot
             $data[] = [
                 [
                     'text'          => $k,
-                    'web_app' => ['url' => "https://$domain/pac$hash?t=te&ty=$type&te=" . urlencode($k)],
+                    'web_app' => ['url' => "https://$domain/webapp{$this->getAdminHash()}/editor?ty=$type&te=" . urlencode($k)],
                 ],
                 [
                     'text'          => $this->i18n('download'),
@@ -5659,16 +5692,8 @@ class Bot
         // sing-box has no XHTTP transport: no sing-box links while XHTTP is on
         $sing = ($pac['transport'] ?? '') != 'xhttp';
 
-        $si = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 'si',
-            's' => $c['id'],
-        ]));
-        $cl = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 'cl',
-            's' => $c['id'],
-        ]));
+        $si = $this->subLink($scheme, $domain, 'si', $c['id']);
+        $cl = $this->subLink($scheme, $domain, 'cl', $c['id']);
 
         $text[] = "\nVless:\n<pre><code>{$this->linkXray($i)}</code></pre>";
         if ($sing) {
@@ -5788,16 +5813,8 @@ class Bot
         }
         $suburl   = "<a href='$scheme://{$domain}/pac$hash/sub?id={$uid}'>subscription</a>";
         [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $client ?? []));
-        $singbox  = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 'si',
-            's' => $uid,
-        ]));
-        $clash = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-            'h' => $hash,
-            't' => 'cl',
-            's' => $uid,
-        ]));
+        $singbox  = $this->subLink($scheme, $domain, 'si', $uid);
+        $clash = $this->subLink($scheme, $domain, 'cl', $uid);
         $vless   = $this->linkXray($k);
         $_GET['s'] = $uid;
         foreach ([
@@ -5823,6 +5840,27 @@ class Bot
                 header('404', true, 404);
                 exit;
         }
+        // the user first: nothing else is read for an unknown or disabled one
+        $xr     = $this->getXray();
+        $flag = true;
+        $client = null;
+        $sid = is_string($_GET['s'] ?? null) ? $_GET['s'] : '';
+        foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
+            if ($sid !== '' && hash_equals((string) $v['id'], $sid)) {
+                if (empty($v['off'])) {
+                    $flag = false;
+                }
+                $template = base64_decode((string) ($v["{$type}template"] ?? ''));
+                $uid      = $v['id'];
+                $email    = $v['email'];
+                $client   = $v;
+                break;
+            }
+        }
+        if ($flag) {
+            header('404', true, 404);
+            exit;
+        }
         $pac    = $this->getPacConf();
         $pac["{$type}templates"] = $this->getTemplates($type);
         if ($type == 'sing' && ($pac['transport'] ?? '') == 'xhttp') {
@@ -5832,41 +5870,12 @@ class Bot
             exit;
         }
         $domain = $this->requestDomain($pac);
-        $xr     = $this->getXray();
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
-        $flag = true;
-        $client = null;
-        $sid = is_string($_GET['s'] ?? null) ? $_GET['s'] : '';
-        foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
-            if ($sid !== '' && hash_equals((string) $v['id'], $sid)) {
-                if (empty($v['off'])) {
-                    $flag = false;
-                }
-                $template = base64_decode($v["{$type}template"]);
-                $uid      = $v['id'];
-                $email    = $v['email'];
-                $client   = $v;
-                break;
-            }
-        }
-        if ($flag) {
-            header('500', true, 500);
-            exit;
-        }
-
         if (!empty($_GET['r'])) {
-            $si = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-                'h' => $hash,
-                't' => 'si',
-                's' => $uid,
-            ]));
-            $cl = "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-                'h' => $hash,
-                't' => 'cl',
-                's' => $uid,
-            ]));
+            $si = $this->subLink($scheme, $domain, 'si', $uid);
+            $cl = $this->subLink($scheme, $domain, 'cl', $uid);
             switch ($_GET['r']) {
                 case 'si':
                     header("Location: sing-box://import-remote-profile/?url=$si");
@@ -6246,12 +6255,7 @@ class Bot
                     }
                     $c['rule-providers'][$v['name']] = [
                         'type'     => 'http',
-                        'url'      => "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-                            'h' => $hash,
-                            't' => 'cl',
-                            's' => $uid,
-                            'r' => $v['name'],
-                        ])),
+                        'url'      => $this->subLink($scheme, $domain, 'cl', $uid, $v['name']),
                         'interval' => $v['interval'],
                         'behavior' => $v['behavior'],
                         'format'   => 'yaml',
@@ -6461,12 +6465,7 @@ class Bot
                     }
                     $ruleset[] = [
                         "tag"             => $r['name'],
-                        "url"             => "$scheme://{$domain}/pac$hash/" . base64_encode(serialize([
-                            'h' => $hash,
-                            't' => 'si',
-                            's' => $uid,
-                            'r' => $r['name'],
-                        ])),
+                        "url"             => $this->subLink($scheme, $domain, 'si', $uid, $r['name']),
                         "update_interval" => $r['interval'],
                         "type"            => "remote",
                         "format"          => "binary",
@@ -6672,7 +6671,10 @@ class Bot
             location
         CONF;
         $template = preg_replace('~(location /adguard.+?})\s*location~s', $r, $template);
-        return preg_replace('~(/webapp|/pac|/adguard|/ws|location /dns-query)~', '${1}' . $h, $template);
+        // the Mini App and the AdGuard panel under their own secret: the
+        // path hash is in every subscriber's links
+        $template = preg_replace('~(/webapp|/adguard)(?=[\s/;{])~', '${1}' . $this->getAdminHash(), $template);
+        return preg_replace('~(/pac|/ws|location /dns-query)(?=[\s/;{])~', '${1}' . $h, $template);
     }
 
     /**
@@ -6698,6 +6700,24 @@ class Bot
             $this->restartXray($x, !$reload);
         }
         return $reload ? $this->ssh(self::NGINX_NG . ' -s reload', 'ng') : '';
+    }
+
+    /**
+     * Secret path part of the admin's pages (/webapp, /adguard): 128 random
+     * bits, not derived from anything subscribers see.
+     */
+    public function getAdminHash(): string
+    {
+        $p = $this->getPacConf();
+        if (!empty($p['adminhash']) && preg_match('~^[0-9a-f]{32}$~D', $p['adminhash'])) {
+            return $p['adminhash'];
+        }
+        if ($this->web) {
+            throw new RuntimeException('no admin path in the settings');
+        }
+        $p['adminhash'] = bin2hex(random_bytes(16));
+        $this->setPacConf($p);
+        return $p['adminhash'];
     }
 
     public function getHashSubdomain($subdomain)
@@ -6731,7 +6751,8 @@ class Bot
         $domain = $this->getDomain();
         $hash   = $this->getHashBot();
         $scheme = empty($ssl = $this->nginxGetTypeCert()) ? 'http' : 'https';
-        $text   = "$scheme://$domain/adguard$hash\nLogin: admin\nPass: <span class='tg-spoiler'>" . htmlspecialchars((string) ($conf['adpswd'] ?? '')) . "</span>\n\n";
+        $admin  = $this->getAdminHash();
+        $text   = "$scheme://$domain/adguard$admin\nLogin: admin\nPass: <span class='tg-spoiler'>" . htmlspecialchars((string) ($conf['adpswd'] ?? '')) . "</span>\n\n";
         if ($ssl) {
             $text .= "DNS over HTTPS:\n<code>$ip</code>\n<code>$scheme://$domain/dns-query$hash" . (!empty($conf['adguardkey']) ? "/{$conf['adguardkey']}" : '') . "</code>\n\n";
             $text .= "DNS over TLS:\n<code>tls://" . (!empty($conf['adguardkey'] )? "{$conf['adguardkey']}." : '') . "$domain</code>";
@@ -6747,7 +6768,7 @@ class Bot
                 [
                     'text'          => $this->i18n('web panel'),
                     'web_app' => [
-                        "url" => "https://$domain/adguard$hash"
+                        "url" => "https://$domain/webapp$admin/"
                     ],
                 ],
                 [
@@ -7928,7 +7949,8 @@ class Bot
                     'chat_id'                  => $chat,
                     'text'                     => "$v\n",
                     'parse_mode'               => $mode,
-                    // 'disable_web_page_preview' => true,
+                    // no link previews: messages carry subscription links
+                    'link_preview_options'     => json_encode(['is_disabled' => true]),
                     'disable_notification'     => $disable_notification,
                     'reply_to_message_id'      => 0 == $k && $to > 0 ? $to : false,
                 ];
@@ -7944,7 +7966,7 @@ class Bot
                 'chat_id'                  => $chat,
                 'text'                     => $text,
                 'parse_mode'               => $mode,
-                // 'disable_web_page_preview' => true,
+                'link_preview_options'     => json_encode(['is_disabled' => true]),
                 'disable_notification'     => $disable_notification,
                 'reply_to_message_id'      => $to,
             ];
@@ -8026,7 +8048,7 @@ class Bot
             'message_id'               => $message_id,
             'text'                     => $text,
             'parse_mode'               => $mode,
-            'disable_web_page_preview' => true,
+            'link_preview_options'     => json_encode(['is_disabled' => true]),
         ];
         if (!empty($extra)) {
             $data['reply_markup'] = json_encode($extra);

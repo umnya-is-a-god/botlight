@@ -11,12 +11,15 @@
     <script>
         var tg = window.Telegram.WebApp;
         jQuery(function($) {
+            // the Telegram sign-in goes in the body, never in the URL
             $.ajax({
-                'url': 'check?' + tg.initData,
+                'url': 'check',
+                'method': 'POST',
+                'data': {initData: tg.initData},
             }).done(function (r) {
                 location.replace(r);
             }).fail(function (r) {
-                location.replace('/');
+                document.body.textContent = 'access denied';
             });
         });
     </script>
