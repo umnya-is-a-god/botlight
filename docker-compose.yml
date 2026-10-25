@@ -55,7 +55,6 @@ services:
             - ./logs/:/logs/
         ports:
             - 443:443/tcp
-            - 443:443/udp
         hostname: upstream
         container_name: upstream-${VER}
         restart: unless-stopped
@@ -436,6 +435,10 @@ services:
             # ocserv.conf and ocserv.passwd (the bot writes both)
             - ./data/ocserv:/etc/ocserv:ro
             - ./certs:/certs:ro
+        # DTLS straight to ocserv: the TCP side comes through upstream with
+        # the proxy protocol, which ocserv takes on TCP only
+        ports:
+            - 443:443/udp
         hostname: ocserv
         container_name: openconnect-${VER}
         restart: unless-stopped

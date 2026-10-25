@@ -867,6 +867,20 @@ class Bot
         if (preg_match('~^camouflage_secret\s*=\s*"([^"\n]*)"~m', (string) @file_get_contents(BOT_DATA . '/ocserv/ocserv.conf'), $m)) {
             $this->setSecret('oc_camouflage', $m[1]);
         }
+        // once: ocserv's workers isolated (seccomp, resource limits), the
+        // default of ocserv itself. Set back to false by hand, it stays so.
+        $this->updateState(function ($st) {
+            if (empty($st['oc_isolate_workers'])) {
+                $f = BOT_DATA . '/ocserv/ocserv.conf';
+                $c = bot_read($f);
+                $n = preg_replace('~^isolate-workers\s*=\s*false[ \t]*$~m', 'isolate-workers = true', $c);
+                if ($n !== $c) {
+                    bot_write($f, $n);
+                }
+                $st['oc_isolate_workers'] = 1;
+            }
+            return $st;
+        });
         $this->syncWarpProfile();
         $this->getHashBot();
         $this->getAdminHash();
@@ -935,7 +949,11 @@ class Bot
     public function upstreamConf(string $t): string
     {
         // the include sits next to it in /etc/nginx/bot (./data/up)
-        return str_replace('include /etc/nginx/deny;', 'include /etc/nginx/bot/deny;', $t);
+        $t = str_replace('include /etc/nginx/deny;', 'include /etc/nginx/bot/deny;', $t);
+        // no UDP here: DTLS goes to ocserv directly (docker-compose.yml);
+        // nginx cannot read the name of a DTLS handshake and ocserv takes
+        // no proxy protocol over UDP
+        return preg_replace('~\n[ \t]*server\s*\{\s*listen\s+443\s+udp;[^{}]*\}[ \t]*(?=\n)~', '', $t);
     }
 
     /**
@@ -1181,8 +1199,9 @@ class Bot
 
     public function chocpass($pass)
     {
-        if (!$this->validSecret($pass = trim((string) $pass))) {
-            $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
+        // one password for every user: long enough not to be guessed
+        if (!$this->validSecret($pass = trim((string) $pass), 12)) {
+            $this->send($this->input['chat'], 'wrong password: 12-128 printable characters, no ":"');
             return;
         }
         $this->setSecret('ocserv', $pass);
@@ -3679,8 +3698,9 @@ class Bot
 
     public function setdnsttPassword($text)
     {
-        if ($text && !$this->validSecret($text = trim((string) $text))) {
-            $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
+        // the SSH password of the tunnel account, open to anyone who finds the domain
+        if ($text && !$this->validSecret($text = trim((string) $text), 12)) {
+            $this->send($this->input['chat'], 'wrong password: 12-128 printable characters, no ":"');
             return;
         }
         $this->setSecret('dnsttPassword', $text ? (string) $text : null);
@@ -3710,13 +3730,13 @@ class Bot
         $c = $this->getPacConf();
         $c['dnsttPassword'] = $this->secret('dnsttPassword');
         $this->ssh('pkill dnstt', 'dnstt');
-        // the domain goes into a background "sh -c" command: allow hostnames only
-        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~D', $c['dnsttDomain'])) {
+        // the domain goes into a background "sh -c" command: a host name only, quoted
+        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && $this->validHost($c['dnsttDomain'])) {
             $this->ssh('echo ' . escapeshellarg("vpnbot:{$c['dnsttPassword']}") . ' | chpasswd', 'dnstt');
             if (!file_exists(BOT_DATA . '/dnstt/server.key')) {
                 $this->ssh("dnstt-server -gen-key -privkey-file /dnstt/server.key -pubkey-file /dnstt/server.pub", 'dnstt');
             }
-            $this->ssh("dnstt-server -udp :53 -privkey-file /dnstt/server.key {$c['dnsttDomain']} 127.0.0.1:22", 'dnstt' , false, '/logs/dnstt');
+            $this->ssh('dnstt-server -udp :53 -privkey-file /dnstt/server.key ' . escapeshellarg($c['dnsttDomain']) . ' 127.0.0.1:22', 'dnstt', false, '/logs/dnstt');
         } else {
             // dnstt is off: the tunnel account must not keep an old password
             $this->ssh('passwd -l vpnbot', 'dnstt');
@@ -7344,9 +7364,10 @@ class Bot
      * A password given to chpasswd/ocpasswd through a pipe: printable, one
      * line, no ':' (chpasswd field separator), 1-128 chars.
      */
-    public function validSecret($secret): bool
+    // printable, no ":" (it goes into chpasswd and ocserv.passwd); $min characters at least
+    public function validSecret($secret, int $min = 1): bool
     {
-        return is_string($secret) && (bool) preg_match('~^[^\x00-\x1f\x7f:]{1,128}$~uD', $secret);
+        return is_string($secret) && (bool) preg_match('~^[^\x00-\x1f\x7f:]{' . max(1, $min) . ',128}$~uD', $secret);
     }
 
     /**
