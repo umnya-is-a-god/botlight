@@ -49,6 +49,7 @@ class Bot
     // the last scan of the analysis menu (task.php logs analysis)
     public $analysisCache = '/tmp/analysis.json';
     public $time_oc_traffic;
+    public $time_status;
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -1327,6 +1328,7 @@ class Bot
                 'autoAnalyzeLogs',
                 'xrayStatsUser',
                 'ocTraffic',
+                'statusCache',
                 'checkWarpStatus',
             ] as $step) {
                 try {
@@ -3860,20 +3862,68 @@ class Bot
         return $r;
     }
 
+    // branch and commits behind origin: git is asked once a minute at most
+    public function gitState(): array
+    {
+        static $c = null;
+        if ($c === null || time() - $c['time'] > 60) {
+            $c = [
+                'time'   => time(),
+                'behind' => (int) exec('git -C / rev-list --count HEAD..@{u} 2> /dev/null'),
+                'branch' => (string) exec('git -C / rev-parse --abbrev-ref HEAD 2> /dev/null'),
+            ];
+        }
+        return $c;
+    }
+
+    // the services as the main menu shows them (SSH to each, AdGuard over HTTP)
+    public function serviceStatus(): array
+    {
+        return [
+            'time'    => time(),
+            'xray'    => (bool) $this->ssh('pgrep xray', 'xr'),
+            'ocserv'  => (bool) $this->ssh('pgrep ocserv', 'oc'),
+            'adguard' => $this->adguardUp(),
+            'dnstt'   => (bool) $this->ssh('pgrep dnstt', 'dnstt'),
+        ];
+    }
+
+    // cron, once a minute: the menu opens without the round trips
+    public function statusCache()
+    {
+        if (!empty($this->time_status) && time() - $this->time_status < 60) {
+            return;
+        }
+        $this->time_status = time();
+        bot_write_json(BOT_DATA . '/status.json', $this->serviceStatus());
+    }
+
+    // the cron loop's last look if under 3 minutes old; null: the loop is not running
+    public function cachedStatus(): ?array
+    {
+        $f = BOT_DATA . '/status.json';
+        $s = is_file($f) ? json_decode((string) @file_get_contents($f), true) : null;
+        return is_array($s) && time() - (int) ($s['time'] ?? 0) < 180 ? $s : null;
+    }
+
     public function menu($type = false, $arg = false, $return = false)
     {
         $conf   = $this->getPacConf();
         $domain = ($conf['domain'] ?? null) ?: $this->ip;
         $hash   = $this->getHashBot();
         if ($type == false) {
-            $update = exec('git -C / rev-list --count HEAD..@{u}');
-            $branch = exec('git -C / rev-parse --abbrev-ref HEAD');
+            ['behind' => $update, 'branch' => $branch] = $this->gitState();
+            // what the cron loop saw a moment ago; looked at now only when
+            // the loop is not running
+            $st     = $this->cachedStatus();
+            $cronOn = $st !== null;
+            $st   ??= $this->serviceStatus();
             $backup = '';
             if (!empty($conf['backup'])) {
                 $b      = array_map('trim', explode('/', $conf['backup'], 2));
                 $backup = $this->backupSchedule($conf['backup']) ? "{$b[0]} start / {$b[1]} period" : htmlspecialchars($conf['backup']) . ' - wrong format';
             }
-            $cron   = $this->dontshowcron ? '' : $this->i18n($this->ssh('pgrep -f cron.php', 'service') ? 'on' : 'off') . ' cron';
+            $cron   = $this->dontshowcron ? '' : $this->i18n($cronOn ? 'on' : 'off') . ' cron';
             $main[] = 'v' . getenv('VER') . " $branch" . ($update ? ' (have updates)' : '');
 
             if (!empty($conf['domain'])) {
@@ -3905,9 +3955,9 @@ class Bot
             // DNSTT is opened with /dnstt; its status shows once it is set up
             $dnstt   = !empty($conf['dnsttDomain']) || !empty($ports['dnstt']['enable']);
             $status  = [
-                $this->i18n($this->ssh('pgrep xray', 'xr') ? 'on' : 'off') . ' ' . $this->i18n('xray'),
-                $this->i18n($this->ssh('pgrep ocserv', 'oc') ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
-                $this->i18n($this->adguardUp() ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
+                $this->i18n(!empty($st['xray']) ? 'on' : 'off') . ' ' . $this->i18n('xray'),
+                $this->i18n(!empty($st['ocserv']) ? 'on' : 'off') . ' ' . $this->i18n('ocserv'),
+                $this->i18n(!empty($st['adguard']) ? 'on' : 'off') . ' ' . $this->i18n('ad_title'),
             ];
             $portcol = [
                 $this->i18n('on') . ' 443',
@@ -3915,7 +3965,7 @@ class Bot
                 $this->i18n(!empty($ports['ad']['enable']) ? 'on' : 'off') . (!empty($ports['ad']['enable']) ? ' ' . $ports['ad']['port'] : ' port is closed'),
             ];
             if ($dnstt) {
-                $status[]  = $this->i18n($this->ssh('pgrep dnstt', 'dnstt') ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
+                $status[]  = $this->i18n(!empty($st['dnstt']) ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
                 $portcol[] = $this->i18n(!empty($ports['dnstt']['enable']) ? 'on' : 'off') . (!empty($ports['dnstt']['enable']) ? ' ' . $ports['dnstt']['port'] : ' port is closed');
             }
             $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
@@ -4159,14 +4209,26 @@ class Bot
 
     public function suspicious($regexp, $file, $ranges, $title, $reverse = false)
     {
+        $ret = [];
+        if (is_array($ranges)) {
+            // single addresses looked up as keys, only real ranges compared
+            $exact = [];
+            $nets  = [];
+            foreach ($ranges as $range) {
+                if (str_ends_with($range, '/32')) {
+                    $exact[substr($range, 0, -3)] = true;
+                } else {
+                    $nets[] = $range;
+                }
+            }
+        }
         if ($r = @fopen($file, 'r')) {
-            while (feof($r) === false) {
-                $l = fgets($r);
+            while (($l = fgets($r)) !== false) {
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
                     if ($reverse xor preg_match($regexp, $l)) {
                         if (is_array($ranges)) {
-                            $flag = true;
-                            foreach ($ranges as $range) {
+                            $flag = !isset($exact[$m[1]]);
+                            foreach ($flag ? $nets : [] as $range) {
                                 if ($this->ipInRange($m[1], $range)) {
                                     $flag = false;
                                     break;
@@ -4202,36 +4264,30 @@ class Bot
     public function analysisScan(): array
     {
         $pac = $this->getPacConf();
+        // known addresses as keys (a set): the logs have thousands of lines
         $xr  = [];
         foreach (array_merge(($pac['white'] ?? null) ?: [], ($pac['deny'] ?? null) ?: [], ['10.10.0.0/23']) as $v) {
             if (preg_match('~^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:(/\d{1,2}))?$~', $v, $m)) {
-                if (!in_array($m[1] . (($m[2] ?? null) ?: '/32'), $xr)) {
-                    $xr[] = $m[1] . (($m[2] ?? null) ?: '/32');
-                }
+                $xr[$m[1] . (($m[2] ?? null) ?: '/32')] = true;
             }
         }
         if ($r = @fopen('/logs/nginx_doh_access', 'r')) {
-            while (feof($r) === false) {
-                $l = fgets($r);
+            while (($l = fgets($r)) !== false) {
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)~', $l, $m)) {
-                    if (!in_array("{$m[1]}/32", $xr)) {
-                        $xr[] = "{$m[1]}/32";
-                    }
+                    $xr["{$m[1]}/32"] = true;
                 }
             }
             fclose($r);
         }
         if ($r = @fopen('/logs/xray', 'r')) {
-            while (feof($r) === false) {
-                $l = fgets($r);
+            while (($l = fgets($r)) !== false) {
                 if (preg_match('~(\d+\.\d+\.\d+\.\d+)(?=.+accepted)~', $l, $m)) {
-                    if (!in_array("{$m[1]}/32", $xr)) {
-                        $xr[] = "{$m[1]}/32";
-                    }
+                    $xr["{$m[1]}/32"] = true;
                 }
             }
             fclose($r);
         }
+        $xr = array_keys($xr);
 
         $t = [
             $this->suspicious($this->reg, '/logs/nginx_default_access', $xr, 'possibly a scanner', true),
