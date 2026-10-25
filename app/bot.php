@@ -215,8 +215,8 @@ class Bot
             case preg_match('~^/switchBanIp$~', $this->input['callback'], $m):
                 $this->switchBanIp();
                 break;
-            case preg_match('~^/switchMonthlyStats$~', $this->input['callback'], $m):
-                $this->switchMonthlyStats();
+            case preg_match('~^/switchMonthlyStats( oc)?$~', $this->input['callback'], $m):
+                $this->switchMonthlyStats(!empty($m[1]));
                 break;
             case preg_match('~^/setIpLimit$~', $this->input['callback'], $m):
                 $this->setIpLimit();
@@ -427,9 +427,6 @@ class Bot
                 break;
             case preg_match('~^/resetOcStats(?: ([0-9a-f]{10}))?$~', $this->input['callback'], $m):
                 $this->resetOcStats($m[1] ?? null);
-                break;
-            case preg_match('~^/switchOcMonthly$~', $this->input['callback'], $m):
-                $this->switchOcMonthly();
                 break;
             case preg_match('~^/renameOcUser ([0-9a-f]{10})$~', $this->input['callback'], $m):
                 $this->renameOcUser($m[1]);
@@ -1572,7 +1569,7 @@ class Bot
     }
 
     /**
-     * Monthly reset of the Xray traffic: on the first run of each calendar
+     * Monthly reset of the Xray and OpenConnect traffic: on the first run of each calendar
      * month (server time zone). Turned on in the middle of a month, the
      * first reset is at the start of the next one.
      */
@@ -1593,8 +1590,9 @@ class Bot
         });
         if ($reset) {
             $this->resetXrStats(1);
+            $this->resetOcStats(null, true);
             foreach ($this->config()['admin'] ?? [] as $admin) {
-                $this->send($admin, "vless: reset stats");
+                $this->send($admin, "vless, openconnect: reset stats");
             }
         }
     }
@@ -4038,7 +4036,8 @@ class Bot
         $this->ipMenu();
     }
 
-    public function switchMonthlyStats()
+    // the monthly reset of Xray and OpenConnect traffic; $oc: from the OpenConnect menu
+    public function switchMonthlyStats($oc = false)
     {
         $c = $this->getPacConf();
         $c['reset_monthly'] = !empty($c['reset_monthly']) ? 0 : 1;
@@ -4051,7 +4050,7 @@ class Bot
             });
         }
         $this->setPacConf($c);
-        $this->xray();
+        return $oc ? $this->menu('oc') : $this->xray();
     }
 
     public function switchIpLimit($limit)
@@ -5013,8 +5012,9 @@ class Bot
                 'callback_data' => '/resetOcStats',
             ],
             [
-                'text'          => $this->i18n('reset monthly') . ': ' . $this->i18n(!empty($pac['oc_reset_monthly']) ? 'on' : 'off'),
-                'callback_data' => '/switchOcMonthly',
+                // one switch with Xray (checkResetXrayStats)
+                'text'          => $this->i18n('reset monthly') . ': ' . $this->i18n(!empty($pac['reset_monthly']) ? 'on' : 'off'),
+                'callback_data' => '/switchMonthlyStats oc',
             ],
         ];
         $data[] = [
@@ -5123,20 +5123,6 @@ class Bot
             return;
         }
         $this->time_oc_traffic = time();
-        $pac = $this->getPacConf();
-        if (!empty($pac['oc_reset_monthly'])) {
-            $month = date('Y-m');
-            $reset = false;
-            $this->updateState(function ($st) use ($month, &$reset) {
-                // turned on in the middle of a month: from the next one
-                $reset = ($st['oc_last_reset_month'] ?? $month) !== $month;
-                $st['oc_last_reset_month'] = $month;
-                return $st;
-            });
-            if ($reset) {
-                $this->resetOcStats(null, true);
-            }
-        }
 
         // the open sessions: occtl and the counters of their tun devices
         $r    = $this->sshRun('occtl --json show users 2> /dev/null; echo __dev; for d in /sys/class/net/vpns*; do [ -d "$d" ] && echo "${d##*/} $(cat "$d/statistics/rx_bytes") $(cat "$d/statistics/tx_bytes")"; done; true', 'oc');
@@ -5269,21 +5255,6 @@ class Bot
             return;
         }
         return $name !== null ? $this->ocUser($id) : $this->menu('oc');
-    }
-
-    public function switchOcMonthly()
-    {
-        $c = $this->getPacConf();
-        $c['oc_reset_monthly'] = !empty($c['oc_reset_monthly']) ? 0 : 1;
-        if ($c['oc_reset_monthly']) {
-            // counted from this month: the first reset at the start of the next
-            $this->updateState(function ($st) {
-                $st['oc_last_reset_month'] = date('Y-m');
-                return $st;
-            });
-        }
-        $this->setPacConf($c);
-        $this->menu('oc');
     }
 
     // the OpenConnect user with this shortId() of the name, null if gone
