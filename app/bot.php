@@ -3651,7 +3651,7 @@ class Bot
 
     public function i18n(string $menu): string
     {
-        return $this->i18n[$menu][$this->language] ?: $menu;
+        return ($this->i18n[$menu][$this->language] ?? '') ?: $menu;
     }
 
     public function alignColumns(array $columns): string
@@ -6002,7 +6002,7 @@ class Bot
                 'callback_data' => "/changeTransport Websocket",
             ],
             [
-                'text'          => $this->i18n('XHTTP') . ($p['transport'] == 'xhttp' ? $this->i18n('on') : $this->i18n('off')),
+                'text'          => $this->i18n('XHTTP') . ' ' . ($p['transport'] == 'xhttp' ? $this->i18n('on') : $this->i18n('off')),
                 'callback_data' => "/changeTransport xhttp",
             ],
         ];

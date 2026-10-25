@@ -1,5 +1,7 @@
 ARG image
 FROM $image
+# makefile: superseded builds are pruned by this label
+LABEL org.botlight.project=vpnbot
 ARG xray_version
 # The release archive is checked against the SHA-256 published with the
 # same release (.dgst): catches corrupted or swapped downloads.

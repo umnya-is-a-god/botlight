@@ -1,5 +1,7 @@
 ARG image
 FROM $image
+# makefile: superseded builds are pruned by this label
+LABEL org.botlight.project=vpnbot
 # ocserv builds with meson since 1.4; release tarball pinned and checked
 # against the sha512 from the Alpine aports recipe (testing/ocserv)
 ARG ocserv_version=1.6.0

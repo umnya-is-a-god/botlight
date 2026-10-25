@@ -1,11 +1,12 @@
 ARG image
-FROM golang:alpine AS go
+FROM golang:1.27.3-alpine3.24 AS go
 # a fixed release; the Go checksum database (sum.golang.org) verifies the
 # module and all its dependencies during the download
 ARG dnstt_version=v1.20260501.0
 RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" \
     www.bamsoftware.com/git/dnstt.git/dnstt-server@$dnstt_version
 FROM $image
+LABEL org.botlight.project=vpnbot
 COPY --from=go /go/bin/dnstt-server /usr/local/bin/
 # vpnbot: the shared tunnel account; a fixed uid for the iptables owner
 # rules in start_dnstt.sh

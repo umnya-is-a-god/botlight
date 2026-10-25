@@ -15,8 +15,8 @@ start: # запуск контейнеров
 	sh ./scripts/migrate_data.sh
 	sh ./scripts/ports.sh
 	IP=$(IP) VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
-	@# drop superseded builds of the botlight images (quiet)
-	-@docker image prune -f > /dev/null
+	@# drop superseded builds of the bot's own images only (quiet)
+	-@docker image prune -f --filter label=org.botlight.project=vpnbot > /dev/null
 u: preup start
 rebuild: # пересборка образов заново, по одному: свежие базовые образы и пакеты (S=сервис — только его)
 	for s in $(or $(S),ng php ad xr oc wp dnstt); do \

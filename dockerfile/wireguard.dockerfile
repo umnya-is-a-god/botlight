@@ -1,5 +1,7 @@
 ARG image
 FROM $image
+# makefile: superseded builds are pruned by this label
+LABEL org.botlight.project=vpnbot
 # microsocks is built from a fixed commit, wgcf is pinned by SHA-256
 ARG microsocks_commit=307950cb1296b521fe86384fd695062ade5304b5
 ARG wgcf_version=2.2.22

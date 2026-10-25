@@ -1,5 +1,7 @@
 ARG image
 FROM $image
+# makefile: superseded builds are pruned by this label
+LABEL org.botlight.project=vpnbot
 # security updates of the base image's packages (ca-certificates, openssl, ...)
 # on every build, not only what the base image was pulled with
 RUN apk upgrade --no-cache \

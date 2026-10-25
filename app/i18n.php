@@ -1,6 +1,34 @@
 <?php
 
 $i = [
+    'cdn'                  => [
+        'en' => 'CDN',
+        'ru' => 'CDN',
+    ],
+    'dnstt'                => [
+        'en' => 'DNSTT',
+        'ru' => 'DNSTT',
+    ],
+    'nip.io'               => [
+        'en' => 'nip.io domain',
+        'ru' => 'домен nip.io',
+    ],
+    'RLTY'                 => [
+        'en' => 'Reality',
+        'ru' => 'Reality',
+    ],
+    'singbox'              => [
+        'en' => 'sing-box',
+        'ru' => 'sing-box',
+    ],
+    'WS'                   => [
+        'en' => 'WebSocket',
+        'ru' => 'WebSocket',
+    ],
+    'XHTTP'                => [
+        'en' => 'XHTTP',
+        'ru' => 'XHTTP',
+    ],
     'allowed clients'      => [
         'en' => 'allowed clients',
         'ru' => 'разрешённые клиенты',

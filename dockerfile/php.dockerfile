@@ -1,5 +1,7 @@
 ARG image
 FROM $image
+# makefile: superseded builds are pruned by this label
+LABEL org.botlight.project=vpnbot
 # Release binaries are pinned by version and SHA-256: a changed or
 # corrupted download fails the build.
 ARG dnslookup_version=1.11.1

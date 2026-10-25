@@ -5,12 +5,12 @@
 AuthorizedKeysFile	/ssh/key.pub
 # host keys: the ed25519 key stays the same across restarts (./sshhost,
 # made by php) and the bot checks it on every login; the others are made
-# at each container start (ssh-keygen -A) for other clients (DNSTT)
+# at each container start (ssh-keygen -A) for other clients (DNSTT).
+# RSA keys sign with rsa-sha2-256/512 only (OpenSSH's default), not with
+# SHA-1 "ssh-rsa": the bot's RSA key works so with libssh2 1.11+.
 HostKey /etc/ssh/pinned/ssh_host_ed25519_key
 HostKey /etc/ssh/ssh_host_ecdsa_key
 HostKey /etc/ssh/ssh_host_rsa_key
-HostKeyAlgorithms +ssh-rsa
-PubkeyAcceptedKeyTypes +ssh-rsa
 LogLevel QUIET
 
 PermitRootLogin prohibit-password
