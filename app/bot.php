@@ -990,116 +990,39 @@ class Bot
 
     public function changeCamouflage()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter camouflage key'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter camouflage key'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'chockey',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter camouflage key'), $this->i18n('enter camouflage key'), 'chockey');
     }
 
     public function changeOcDomain()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter subdomain'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter subdomain'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'chOcSubdomain',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter subdomain'), $this->i18n('enter subdomain'), 'chOcSubdomain');
     }
 
 
     public function changeOcPass()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter pass'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter password'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'chocpass',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter pass'), $this->i18n('enter password'), 'chocpass');
     }
 
     public function addOcUser()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter name'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'addocus',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter name'), $this->i18n('enter name'), 'addocus');
     }
 
     public function addXrUser()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter name'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter name:uuid [,name:uuid]'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'addxrus',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter name'), $this->i18n('enter name:uuid [,name:uuid]'), 'addxrus');
     }
 
     // $uid: the user's id (renXrUs finds the user again by it)
     public function renameXrUser($uid)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter name'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'renXrUs',
-            'args'           => [$uid],
-        ];
+        $this->prompt($this->i18n('enter name'), $this->i18n('enter name'), 'renXrUs', [$uid]);
     }
 
     public function addOverrideHtml()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('attach html'),
-            $this->input['message_id'],
-            reply: $this->i18n('attach html'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setOverrideHtml',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('attach html'), $this->i18n('attach html'), 'setOverrideHtml');
     }
 
     /**
@@ -1236,18 +1159,7 @@ class Bot
 
     public function importList($type)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send the export file:'),
-            $this->input['message_id'],
-            reply: $this->i18n('send the export file:'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'importListFile',
-            'args'           => [$type],
-        ];
+        $this->prompt($this->i18n('send the export file:'), $this->i18n('send the export file:'), 'importListFile', [$type]);
     }
 
     /**
@@ -1713,18 +1625,7 @@ class Bot
 
     public function backupPassword()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt backup password'),
-            $this->input['message_id'],
-            reply: $this->i18n('backup password'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setBackupPassword',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('prompt backup password'), $this->i18n('backup password'), 'setBackupPassword');
     }
 
     // the password message is deleted (reply()); only the public key stays
@@ -1992,18 +1893,7 @@ class Bot
                 [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
             ]);
         }
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send the export file:'),
-            $this->input['message_id'],
-            reply: $this->i18n('send the export file:'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'importFromChat',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('send the export file:'), $this->i18n('send the export file:'), 'importFromChat');
     }
 
     // reply to the "send the backup" prompt: the file comes from the message,
@@ -2090,18 +1980,7 @@ class Bot
                 if ($password !== null) {
                     $this->send($this->input['chat'], 'wrong backup password');
                 }
-                $r = $this->send(
-                    $this->input['chat'],
-                    "@{$this->input['username']} " . $this->i18n('backup password'),
-                    $this->input['message_id'],
-                    reply: $this->i18n('backup password'),
-                );
-                $_SESSION['reply'][$r['result']['message_id']] = [
-                    'start_message'  => $this->input['message_id'],
-                    'start_callback' => $this->input['callback_id'],
-                    'callback'       => 'importWithPassword',
-                    'args'           => [$this->input['file_id']],
-                ];
+                $this->prompt($this->i18n('backup password'), $this->i18n('backup password'), 'importWithPassword', [$this->input['file_id']]);
                 return;
             }
             $json = json_decode($plain, true);
@@ -2209,6 +2088,26 @@ class Bot
     public function upload($name, $code, $chat = false)
     {
         return $this->sendFile($chat ?: $this->input['chat'], new CURLStringFile($code, $name));
+    }
+
+    /**
+     * Asks the admin for an answer (a forced reply in the chat): the answer
+     * goes to $callback($answer, ...$args), see reply().
+     */
+    public function prompt(string $text, string $placeholder, string $callback, array $args = [])
+    {
+        $r = $this->send(
+            $this->input['chat'],
+            "@{$this->input['username']} " . $text,
+            $this->input['message_id'],
+            reply: $placeholder,
+        );
+        $_SESSION['reply'][$r['result']['message_id']] = [
+            'start_message'  => $this->input['message_id'],
+            'start_callback' => $this->input['callback_id'],
+            'callback'       => $callback,
+            'args'           => $args,
+        ];
     }
 
     public function reply()
@@ -2561,32 +2460,12 @@ class Bot
 
     public function domain()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter domain'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter domain'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addDomain',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter domain'), $this->i18n('enter domain'), 'addDomain');
     }
 
     public function selfssl()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt selfssl'),
-            $this->input['message_id'],
-            reply: $this->i18n('send file with your certificate chain and private key'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'selfsslInstall',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('prompt selfssl'), $this->i18n('send file with your certificate chain and private key'), 'selfsslInstall');
     }
 
     // AdGuard's config; an exception if it cannot be read or parsed
@@ -2638,32 +2517,12 @@ class Bot
 
     public function adguardpsswd()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter password'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter password'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'chpsswd',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter password'), $this->i18n('enter password'), 'chpsswd');
     }
 
     public function setAdguardKey()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter key'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter key'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setAdKey',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter key'), $this->i18n('enter key'), 'setAdKey');
     }
 
 
@@ -2690,47 +2549,17 @@ class Bot
         if (!$this->mainAdminOnly()) {
             return;
         }
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter id / name'),
-            $this->input['message_id'],
-            reply: $this->i18n('ph: enter id / name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addAdmin',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter id / name'), $this->i18n('ph: enter id / name'), 'addAdmin');
     }
 
     public function setIpLimit()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter seconds and count ip'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter seconds:count_ip'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'switchIpLimit',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter seconds and count ip'), $this->i18n('enter seconds:count_ip'), 'switchIpLimit');
     }
 
     public function addLinkDomain()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter domain for link'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter domain for link'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setLinkDomain',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter domain for link'), $this->i18n('enter domain for link'), 'setLinkDomain');
     }
 
     public function setLinkDomain($text)
@@ -2752,17 +2581,7 @@ class Bot
 
     public function enterPage()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter limit on page'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter limit on page'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setPage',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter limit on page'), $this->i18n('enter limit on page'), 'setPage');
     }
 
     public function setPage($text) {
@@ -2872,18 +2691,7 @@ class Bot
 
     public function renameAdmin($id)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter name'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setAdminName',
-            'args'           => [(int) $id],
-        ];
+        $this->prompt($this->i18n('enter name'), $this->i18n('enter name'), 'setAdminName', [(int) $id]);
     }
 
     public function setAdminName($name, $id)
@@ -3089,17 +2897,7 @@ class Bot
 
     public function checkdns()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt checkdns'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter command'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'dnscheck',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('prompt checkdns'), $this->i18n('enter command'), 'dnscheck');
     }
 
     public function dnscheck($dns)
@@ -3112,17 +2910,7 @@ class Bot
 
     public function addupstream()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter address upstream'),
-            $this->input['message_id'],
-            reply: $this->i18n('ph: enter address upstream'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'upstream',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter address upstream'), $this->i18n('ph: enter address upstream'), 'upstream');
     }
 
     /**
@@ -3230,30 +3018,11 @@ class Bot
 
     public function include($type)
     {
-        switch ($type) {
-            case 'rulessetlist':
-                $r = $this->send(
-                    $this->input['chat'],
-                    "@{$this->input['username']} " . $this->i18n('prompt rulesset'),
-                    $this->input['message_id'],
-                    reply: 'outbound[:behavior]:time:URL',
-                );
-                break;
-
-            default:
-                $r = $this->send(
-                    $this->input['chat'],
-                    "@{$this->input['username']} " . $this->i18n('list separated by commas'),
-                    $this->input['message_id'],
-                    reply: $this->i18n('ph: list separated by commas'),
-                );
-                break;
+        if ($type == 'rulessetlist') {
+            $this->prompt($this->i18n('prompt rulesset'), 'outbound[:behavior]:time:URL', 'addInclude', [$type]);
+        } else {
+            $this->prompt($this->i18n('list separated by commas'), $this->i18n('ph: list separated by commas'), 'addInclude', [$type]);
         }
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'addInclude',
-            'args'          => [$type],
-        ];
     }
 
     public function addInclude(string $domains, $type)
@@ -3696,32 +3465,12 @@ class Bot
 
     public function dnsttDomain()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter domain'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter domain'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setdnsttDomain',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter domain'), $this->i18n('enter domain'), 'setdnsttDomain');
     }
 
     public function dnsttPassword()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter password'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter password'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message' => $this->input['message_id'],
-            'callback'      => 'setdnsttPassword',
-            'args'          => [],
-        ];
+        $this->prompt($this->i18n('enter password'), $this->i18n('enter password'), 'setdnsttPassword');
     }
 
     public function setdnsttPassword($text)
@@ -4974,18 +4723,7 @@ class Bot
 
     public function bridgePrompt()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt bridge'),
-            $this->input['message_id'],
-            reply: $this->i18n('bridge IP'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setBridge',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('prompt bridge'), $this->i18n('bridge IP'), 'setBridge');
     }
 
     /**
@@ -5360,18 +5098,7 @@ class Bot
 
     public function renameOcUser(string $i)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter name'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'renOcUs',
-            'args'           => [$i],
-        ];
+        $this->prompt($this->i18n('enter name'), $this->i18n('enter name'), 'renOcUs', [$i]);
     }
 
     // all OpenConnect users share one password: the new name gets it, the old one is removed
@@ -5679,34 +5406,12 @@ class Bot
 
     public function templateAdd($type)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send the template file:'),
-            $this->input['message_id'],
-            reply: $this->i18n('send the template file:'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'addTemplate',
-            'args'           => [$type],
-        ];
+        $this->prompt($this->i18n('send the template file:'), $this->i18n('send the template file:'), 'addTemplate', [$type]);
     }
 
     public function autoScanTimeout()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send time like 1 hour or 1 day etc'),
-            $this->input['message_id'],
-            reply: $this->i18n('ph: send time like 1 hour or 1 day etc'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setAutoScanTimeout',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('send time like 1 hour or 1 day etc'), $this->i18n('ph: send time like 1 hour or 1 day etc'), 'setAutoScanTimeout');
     }
 
     public function setAutoScanTimeout($time)
@@ -5729,18 +5434,7 @@ class Bot
 
     public function templateCopy($type)
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send the template name'),
-            $this->input['message_id'],
-            reply: $this->i18n('send the template name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'copyTemplate',
-            'args'           => [$type],
-        ];
+        $this->prompt($this->i18n('send the template name'), $this->i18n('send the template name'), 'copyTemplate', [$type]);
     }
 
     /**
@@ -5964,18 +5658,7 @@ class Bot
 
     public function mainOutbound()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('send name'),
-            $this->input['message_id'],
-            reply: $this->i18n('ph: send name'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setMainOutbound',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('send name'), $this->i18n('ph: send name'), 'setMainOutbound');
     }
 
     public function setMainOutbound($text)
@@ -6202,18 +5885,7 @@ class Bot
 
     public function warpPlus()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt warp'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter key'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'addWarpPlus',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('prompt warp'), $this->i18n('enter key'), 'addWarpPlus');
     }
 
     /**
@@ -7042,18 +6714,7 @@ class Bot
 
     public function happRouting()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('prompt happ routing'),
-            $this->input['message_id'],
-            reply: 'happ://routing/onadd/...',
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setHappRouting',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('prompt happ routing'), 'happ://routing/onadd/...', 'setHappRouting');
     }
 
     public function setHappRouting($text)
@@ -8544,35 +8205,13 @@ class Bot
 
     public function backup()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter like: start / period'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter like: now / 12 hours'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setBackup',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter like: start / period'), $this->i18n('enter like: now / 12 hours'), 'setBackup');
     }
 
 
     public function changeFakeDomain()
     {
-        $r = $this->send(
-            $this->input['chat'],
-            "@{$this->input['username']} " . $this->i18n('enter domain'),
-            $this->input['message_id'],
-            reply: $this->i18n('enter domain'),
-        );
-        $_SESSION['reply'][$r['result']['message_id']] = [
-            'start_message'  => $this->input['message_id'],
-            'start_callback' => $this->input['callback_id'],
-            'callback'       => 'setFakeDomain',
-            'args'           => [],
-        ];
+        $this->prompt($this->i18n('enter domain'), $this->i18n('enter domain'), 'setFakeDomain');
     }
 
     public function setFakeDomain($domain, $self = false)
