@@ -10,11 +10,11 @@ cd "$(dirname "$0")/.." || exit 1
 umask 077
 
 D=./data
-for d in "$D" "$D/xray" "$D/adguard" "$D/ocserv" "$D/up" "$D/ng" "$D/www" "$D/dnstt" "$D/backup"; do
+for d in "$D" "$D/xray" "$D/adguard" "$D/ocserv" "$D/up" "$D/ng" "$D/www" "$D/dnstt" "$D/backup" "$D/letsencrypt" "$D/acme"; do
     mkdir -p "$d" || exit 1
 done
 # read by the containers that mount them (as root) and by nginx workers
-chmod 755 "$D/www"
+chmod 755 "$D/www" "$D/acme"
 
 # original:copy in ./data
 pairs="app/config.php:config.php

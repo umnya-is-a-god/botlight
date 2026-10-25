@@ -49,6 +49,30 @@ function bot_lock(string $path, callable $fn)
 }
 
 /**
+ * Runs $fn only if nobody holds the lock of $path: false when it is busy
+ * (a long job such as certbot must not run twice at once).
+ */
+function bot_try_lock(string $path, callable $fn): bool
+{
+    $lock = dirname($path) . '/.' . basename($path) . '.lock';
+    $l    = @fopen($lock, 'c');
+    if ($l === false) {
+        throw new RuntimeException("cannot open the lock $lock");
+    }
+    if (!flock($l, LOCK_EX | LOCK_NB)) {
+        fclose($l);
+        return false;
+    }
+    try {
+        $fn();
+        return true;
+    } finally {
+        flock($l, LOCK_UN);
+        fclose($l);
+    }
+}
+
+/**
  * Replaces $path with $data: written to a temporary file in the same
  * folder, flushed to disk, then renamed over $path. $gid: group of the
  * file (a web pool that has to read it).

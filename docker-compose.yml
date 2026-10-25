@@ -108,6 +108,8 @@ services:
             - ./scripts:/scripts:ro
             - ./data/ng:/etc/nginx/bot:ro
             - ./data/www:/www:ro
+            # Let's Encrypt challenges (certbot in php/service writes them)
+            - ./data/acme:/acme:ro
             # override.conf and location.conf (your own nginx includes)
             - ./config:/etc/nginx/user:ro
             - ./certs/:/certs/:ro
@@ -175,6 +177,9 @@ services:
             - ./config/:/config/:ro
             - ./data:/data
             - ./certs/:/certs/
+            # certbot: account and certificate lineages, challenge files
+            - ./data/letsencrypt:/etc/letsencrypt
+            - ./data/acme:/acme
             - ./ssh:/ssh
             - ./sshpub:/sshpub
             - ./sshhost:/sshhost
@@ -243,6 +248,9 @@ services:
             - ./config/:/config/:ro
             - ./data:/data
             - ./certs/:/certs/
+            # certbot: account and certificate lineages, challenge files
+            - ./data/letsencrypt:/etc/letsencrypt
+            - ./data/acme:/acme
             - ./ssh:/ssh:ro
             - ./sshhost/service:/etc/ssh/pinned:ro
             - ./app:/app:ro
