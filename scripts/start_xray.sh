@@ -38,6 +38,7 @@ fi
 
 uuid=$(jq -r '.inbounds[0].settings.clients[0].id // empty' /xray/xray.json)
 if [ -n "$uuid" ] && [ ! -e /tmp/fw_failed ]; then
-    xray run -config /xray/xray.json > /dev/null 2>&1 &
+    # its errors into the log (rotated with the others)
+    xray run -config /xray/xray.json >> /logs/xray_error 2>&1 &
 fi
 tail -f /dev/null

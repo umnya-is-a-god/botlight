@@ -6,6 +6,8 @@ class Bot
     // (mounted as /etc/nginx/bot): every nginx call names it
     const NGINX_NG = 'nginx -c /etc/nginx/bot/nginx.conf';
     const NGINX_UP = 'nginx -c /etc/nginx/bot/upstream.conf';
+    // Xray's config test: its messages (on stdout) only when it fails
+    const XRAY_TEST = 'o=$(xray run -test -format json -config %s 2>&1); r=$?; [ $r -eq 0 ] || printf "%%s" "$o" | tail -n 20 >&2; [ $r -eq 0 ]';
 
     public $input;
     public $adguard;
@@ -36,6 +38,8 @@ class Bot
     public $ports;
     // true in the web pools (index.php): no bot token, read-only views
     public $web;
+    // AdGuard's config was changed since it was last started
+    public $adguardChanged = false;
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -599,13 +603,21 @@ class Bot
             "statsOutboundUplink"   => true,
             "statsOutboundDownlink" => true
         ];
+        $json = json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (empty($norestart)) {
             // Xray's counters start from zero after the restart. In one locked
             // step (the cron loop updates the same stats): latest counters
             // under the running config's names, into the totals, the renamed
             // user's record to the new name, new config, restart.
-            $this->updateXrayStats(function ($p) use ($c, $rename) {
+            $ok = true;
+            $this->updateXrayStats(function ($p) use ($c, $rename, $json, &$ok) {
                 $running = array_map(fn($e) => (string) ($e['email'] ?? ''), $this->getXray()['inbounds'][0]['settings']['clients'] ?? []);
+                // only a config Xray accepts; else nothing changes
+                if (!$this->applyConfig(BOT_DATA . '/xray/xray.json', $json, 'xr', self::XRAY_TEST)) {
+                    $ok = false;
+                    return $p;
+                }
+                $this->saveXrayView($c);
                 if (($cnt = $this->xrayCounters()) !== null) {
                     // Xray may have restarted since the last read (the bot
                     // runs this on every start): its earlier counts first
@@ -621,14 +633,100 @@ class Bot
                 // users no longer in the config (deleted) leave the stats
                 $emails     = array_map(fn($e) => (string) ($e['email'] ?? ''), $c['inbounds'][0]['settings']['clients'] ?? []);
                 $p['users'] = array_intersect_key($p['users'] ?? [], array_flip($emails));
-                $this->saveXray($c);
-                $this->ssh('pkill xray', 'xr');
-                // not without the egress filter (see scripts/start_xray.sh)
-                $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray/xray.json > /dev/null 2>&1 &', 'xr');
+                $this->startXray();
+                if (!$this->xrayRunning()) {
+                    // accepted by the test, but Xray does not run with it:
+                    // the previous config back
+                    if ($this->rollbackConfig(BOT_DATA . '/xray/xray.json')) {
+                        $this->saveXrayView($this->getXray());
+                        $this->startXray();
+                    }
+                    $this->configRejected('xray.json', 'Xray stopped with the new config, the previous one is back: ' . $this->ssh('tail -n 20 /logs/xray_error', 'xr'));
+                    $ok = false;
+                }
                 return $p;
             });
-        } else {
-            $this->saveXray($c);
+            return $ok;
+        }
+        if ($this->applyConfig(BOT_DATA . '/xray/xray.json', $json, 'xr', self::XRAY_TEST)) {
+            $this->saveXrayView($c);
+            return true;
+        }
+        return false;
+    }
+
+    // Xray started again; its errors go to /logs/xray_error
+    public function startXray()
+    {
+        $this->ssh('pkill xray', 'xr');
+        // not without the egress filter (see scripts/start_xray.sh)
+        $this->ssh('[ -e /tmp/fw_failed ] || xray run -config /xray/xray.json >> /logs/xray_error 2>&1 &', 'xr');
+    }
+
+    // Xray runs (or is off on purpose: no egress filter, see start_xray.sh)
+    public function xrayRunning(): bool
+    {
+        $r = $this->sshRun('[ -e /tmp/fw_failed ] && exit 0; sleep 1; pgrep -x xray > /dev/null', 'xr');
+        // not reachable: nothing known, nothing to undo
+        return $r['rc'] === null || $r['rc'] === 0;
+    }
+
+    /**
+     * Replaces a config file a container uses, but only once the program
+     * there accepts the new content: written next to it as <file>.new,
+     * tested in the container ($test: the command, %s: the .new file as the
+     * container sees it), then renamed over the old one, which is kept as
+     * <file>.prev (rollbackConfig). A rejected config is removed, the old
+     * one stays and the admin gets the error. A container that cannot be
+     * reached (not running yet) gets the file untested.
+     */
+    public function applyConfig(string $file, string $content, string $service, string $test, int $mode = 0600, ?int $gid = null): bool
+    {
+        $dir = [
+            'xr' => '/xray',
+            'ng' => '/etc/nginx/bot',
+            'up' => '/etc/nginx/bot',
+            'oc' => '/etc/ocserv',
+            'ad' => '/config',
+        ][$service];
+        return bot_lock($file, function () use ($file, $content, $service, $test, $mode, $gid, $dir) {
+            bot_write("$file.new", $content, $mode, $gid, false);
+            $r = $this->sshRun(sprintf($test, escapeshellarg($dir . '/' . basename($file) . '.new')), $service);
+            if ($r['rc'] !== null && $r['rc'] !== 0) {
+                @unlink("$file.new");
+                $this->configRejected(basename($file), trim($r['err'] . "\n" . $r['out']));
+                return false;
+            }
+            if ($r['rc'] === null) {
+                error_log("applyConfig $file: $service not reachable, written without a test");
+            }
+            if (is_file($file)) {
+                bot_write("$file.prev", bot_read($file), $mode, $gid, false);
+            }
+            if (!rename("$file.new", $file)) {
+                throw new RuntimeException("cannot write $file");
+            }
+            return true;
+        });
+    }
+
+    // the config before the last applyConfig back in place
+    public function rollbackConfig(string $file): bool
+    {
+        return bot_lock($file, fn() => is_file("$file.prev") && rename("$file.prev", $file));
+    }
+
+    // a config was not applied: the admin who changed it (or the main admin) is told why
+    public function configRejected(string $what, string $error)
+    {
+        error_log("config $what rejected: $error");
+        try {
+            $chat = (int) ($this->input['chat'] ?? 0) ?: (int) ($this->config()['admin'][0] ?? 0);
+        } catch (Throwable $e) {
+            return;
+        }
+        if ($chat) {
+            $this->send($chat, "$what: the change was not applied, the old config is kept\n<pre>" . htmlspecialchars(mb_substr($error, -3000)) . '</pre>');
         }
     }
 
@@ -877,12 +975,26 @@ class Bot
 
     public function restartOcserv($conf)
     {
-        bot_write(BOT_DATA . '/ocserv/ocserv.conf', $conf);
+        // ocserv -t also loads the certificate: without one it fails
+        // anyway, so then the file is only parsed when ocserv starts
+        $test = is_file('/certs/cert_public') ? 'ocserv -t -c %s' : 'true';
+        if (!$this->applyConfig(BOT_DATA . '/ocserv/ocserv.conf', $conf, 'oc', $test)) {
+            return false;
+        }
         $this->ssh('pkill ocserv', 'oc');
         $pac = $this->getPacConf();
         if (!empty($pac['ocserv']) && !empty($this->getHashSubdomain('oc'))) {
             $this->ssh('ocserv -c /etc/ocserv/ocserv.conf', 'oc');
+            if ($this->sshRun('sleep 1; pgrep ocserv > /dev/null', 'oc')['rc'] === 1 && is_file('/certs/cert_public')) {
+                // it does not start with the new config: the previous one back
+                if ($this->rollbackConfig(BOT_DATA . '/ocserv/ocserv.conf')) {
+                    $this->ssh('ocserv -c /etc/ocserv/ocserv.conf', 'oc');
+                }
+                $this->configRejected('ocserv.conf', 'ocserv did not start with the new config, the previous one is back');
+                return false;
+            }
         }
+        return true;
     }
 
 
@@ -2173,13 +2285,16 @@ class Bot
         return $c;
     }
 
-    public function saveAdguard(array $c)
+    // AdGuard's config, if AdGuard accepts it (--check-config in ad)
+    public function saveAdguard(array $c): bool
     {
         $y = yaml_emit($c);
         if (!is_string($y) || $y === '') {
             throw new RuntimeException("cannot encode {$this->adguard}");
         }
-        bot_write($this->adguard, $y);
+        $ok = $this->applyConfig($this->adguard, $y, 'ad', 'd=$(mktemp -d); /opt/adguardhome/AdGuardHome --check-config --no-permcheck --no-check-update -c %s -w "$d" > /dev/null; r=$?; rm -rf "$d"; [ $r -eq 0 ]');
+        $this->adguardChanged = $this->adguardChanged || $ok;
+        return $ok;
     }
 
     public function adguardSync()
@@ -2638,14 +2753,31 @@ class Bot
         return (bool) exec("JSON=1 timeout 2 dnslookup google.com ad");
     }
 
+    /**
+     * AdGuard in the background. After a config change it must come up
+     * within a few seconds, else the previous config goes back.
+     */
     public function startAd()
     {
-        return $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
+        $out = $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
+        if ($this->adguardChanged) {
+            $this->adguardChanged = false;
+            for ($i = 0; $i < 20 && !$this->adguardUp(); $i++) {
+                usleep(500000);
+            }
+            if (!$this->adguardUp() && $this->rollbackConfig($this->adguard)) {
+                $this->stopAd();
+                $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
+                $this->configRejected('AdGuardHome.yaml', 'AdGuard did not start with the new config, the previous one is back');
+            }
+        }
+        return $out;
     }
 
+    // AdGuard stopped: waits until the process has ended (up to 10 s)
     public function stopAd()
     {
-        return $this->ssh('kill -15 $(cat /opt/adguardhome/pid)', 'ad');
+        return $this->ssh('p=$(cat /opt/adguardhome/pid 2>/dev/null); [ -n "$p" ] || exit 0; kill -15 "$p"; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done', 'ad');
     }
 
     public function selfsslInstall()
@@ -4130,8 +4262,14 @@ class Bot
             }
         }
         $this->setPacConf($pac);
-        bot_write(BOT_DATA . '/up/deny', $text ?: '');
-        $this->ssh(self::NGINX_UP . ' -s reload', 'up');
+        // tested with a copy of upstream.conf that includes the new list
+        $up = BOT_DATA . '/up/upstream.conf';
+        bot_write("$up.test", str_replace('include /etc/nginx/bot/deny;', 'include /etc/nginx/bot/deny.new;', $this->upstreamConf(bot_read($up))));
+        $ok = $this->applyConfig(BOT_DATA . '/up/deny', $text ?: '', 'up', 'nginx -t -q -c /etc/nginx/bot/upstream.conf.test');
+        @unlink("$up.test");
+        if ($ok) {
+            $this->ssh(self::NGINX_UP . ' -s reload', 'up');
+        }
     }
 
     public function linkXray($i, $s = false)
@@ -6384,8 +6522,15 @@ class Bot
         }
         $nginx = bot_read(BOT_DATA . '/up/upstream.conf');
         $t = preg_replace('~#domain.+#domain~s', "#domain\n$domain reality;\n#domain", $this->upstreamConf($nginx));
-        bot_write(BOT_DATA . '/up/upstream.conf', $t);
-        $this->ssh(self::NGINX_UP . ' -s reload 2>&1', 'up');
+        $this->applyUpstream($t);
+    }
+
+    // upstream.conf, if nginx in up accepts it, and reload
+    public function applyUpstream(string $t)
+    {
+        if ($this->applyConfig(BOT_DATA . '/up/upstream.conf', $t, 'up', 'nginx -t -q -c %s')) {
+            $this->ssh(self::NGINX_UP . ' -s reload 2>&1', 'up');
+        }
     }
 
     public function setUpstreamDomainOcserv($domain)
@@ -6396,8 +6541,7 @@ class Bot
         $sub   = $this->getHashSubdomain('oc');
         $nginx = bot_read(BOT_DATA . '/up/upstream.conf');
         $t     = preg_replace('~#ocserv.+#ocserv~s', $domain ? "#ocserv\n" . ($sub ? '' : '#' ) . "$sub.$domain ocserv;\n#ocserv" : "#ocserv\n#$sub.\$domain ocserv;\n#ocserv", $this->upstreamConf($nginx));
-        bot_write(BOT_DATA . '/up/upstream.conf', $t);
-        $this->ssh(self::NGINX_UP . ' -s reload 2>&1', 'up');
+        $this->applyUpstream($t);
     }
 
     /**
@@ -6538,7 +6682,9 @@ class Bot
      */
     public function cloakNginx($reload = true)
     {
-        bot_write(BOT_DATA . '/ng/nginx.conf', $this->nginxConf());
+        if (!$this->applyConfig(BOT_DATA . '/ng/nginx.conf', $this->nginxConf(), 'ng', 'nginx -t -q -c %s')) {
+            return '';
+        }
         $h       = $this->getHashBot();
         $x       = $this->getXray();
         $changed = false;
@@ -7565,61 +7711,105 @@ class Bot
         $this->menu('config');
     }
 
+    // stdout of a command in a container (see sshRun)
     public function ssh($cmd, $service, $wait = true, $log = '/dev/null')
     {
-        $data = '';
+        return $this->sshRun($cmd, $service, $wait, $log)['out'];
+    }
+
+    /**
+     * A command in a container over SSH. Returns ['out' => stdout,
+     * 'err' => stderr, 'rc' => exit code]; rc is null when the container
+     * could not be reached or the command was started in the background
+     * ($wait false, its output goes to $log).
+     */
+    public function sshRun($cmd, $service, $wait = true, $log = '/dev/null'): array
+    {
+        $res = ['out' => '', 'err' => '', 'rc' => null];
         try {
-            $c = ssh2_connect($service, 22, ['hostkey' => 'ssh-ed25519']);
+            $c = @ssh2_connect($service, 22, ['hostkey' => 'ssh-ed25519']);
             if (empty($c)) {
-                throw new Exception("no connection to $service: \n$cmd\n" . var_export($c, true));
+                throw new Exception("no connection to $service");
             }
             // the container must show its own host key (made by php, ./sshhost)
             $pub = preg_match('~^[a-z]+$~', $service) ? @file_get_contents("/ssh/host_$service.pub") : false;
             $blob = base64_decode(explode(' ', trim((string) $pub))[1] ?? '', true);
             if (!$blob || strcasecmp(ssh2_fingerprint($c, SSH2_FINGERPRINT_SHA1 | SSH2_FINGERPRINT_HEX), sha1($blob)) !== 0) {
                 error_log("ssh $service: host key mismatch, command not sent");
-                throw new Exception("host key mismatch: $service\n$cmd");
+                throw new Exception("host key mismatch: $service");
             }
-            $a = ssh2_auth_pubkey_file($c, 'root', '/ssh/key.pub', '/ssh/key');
+            $a = @ssh2_auth_pubkey_file($c, 'root', '/ssh/key.pub', '/ssh/key');
             if (empty($a)) {
-                throw new Exception("auth fail: \n$cmd\n" . var_export($a, true));
+                throw new Exception("auth fail: $service");
             }
 
-            // Оборачиваем команду для выполнения в фоновом режиме
             if (!$wait) {
-                // nohup запускает процесс независимо от SSH-сессии
-                // & переносит процесс в фон
-                // </dev/null >/dev/null 2>&1 перенаправляет все потоки ввода-вывода
+                // nohup: independent of the SSH session, & in the background,
+                // the output into $log and the container's log
                 $cmd = "nohup sh -c \"$cmd 2>&1 | tee -a $log >&3\" 3>/proc/1/fd/1 </dev/null &";
+            } else {
+                // the exit code comes as the last line of stdout; the
+                // subshell keeps it even if the command calls exit
+                $cmd = "(\n$cmd\n)\nprintf '\\n__botrc=%d' \"\$?\"";
             }
-
 
             $s = ssh2_exec($c, $cmd);
             if (empty($s)) {
-                throw new Exception("exec fail: \n$cmd\n" . var_export($s, true));
+                throw new Exception("exec fail: $service");
             }
 
-            $data = "";
             if ($wait) {
-                // Только для синхронных команд читаем вывод
-                stream_set_blocking($s, true);
-                while ($buf = fread($s, 4096)) {
-                    $data .= $buf;
-                }
-            } else {
-                // Для фоновых команд просто даем время запуститься
+                // both streams without blocking: a blocking read of stdout
+                // does not see its end while stderr is open (php-ssh2), and
+                // a process left in the background may keep stdout open;
+                // the exit code line ends the command
+                $e = ssh2_fetch_stream($s, SSH2_STREAM_STDERR);
                 stream_set_blocking($s, false);
-                usleep(100000); // 100ms для запуска процесса
+                stream_set_blocking($e, false);
+                $deadline = time() + 300;
+                while (true) {
+                    $o = fread($s, 8192);
+                    $r = fread($e, 8192);
+                    $res['out'] .= (string) $o;
+                    $res['err'] .= (string) $r;
+                    if (preg_match('~\n__botrc=(\d+)$~', $res['out'], $m)) {
+                        $res['rc']  = (int) $m[1];
+                        $res['out'] = substr($res['out'], 0, -strlen($m[0]));
+                        break;
+                    }
+                    if (feof($s) || time() > $deadline) {
+                        break;
+                    }
+                    if ((string) $o === '' && (string) $r === '') {
+                        usleep(20000);
+                    }
+                }
+                // what is left on stderr
+                for ($i = 0; $i < 5; $i++) {
+                    $r = fread($e, 8192);
+                    if ((string) $r !== '') {
+                        $res['err'] .= $r;
+                        $i = 0;
+                    } else {
+                        usleep(10000);
+                    }
+                }
+                fclose($e);
+            } else {
+                // a moment for the background command to start
+                stream_set_blocking($s, false);
+                usleep(100000);
             }
 
             fclose($s);
             ssh2_disconnect($c);
         } catch (Exception | Error $e) {
+            $res['err'] = $e->getMessage();
             if ($this->debugOn()) {
-                $this->send($this->input['chat'], $e->getMessage(), $this->input['message_id']);
+                $this->send($this->input['chat'], htmlspecialchars("ssh $service: " . $e->getMessage()), $this->input['message_id']);
             }
         }
-        return $data;
+        return $res;
     }
 
     public function request($method, $data, $json_header = 0)

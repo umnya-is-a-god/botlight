@@ -77,9 +77,9 @@ function bot_try_lock(string $path, callable $fn): bool
  * folder, flushed to disk, then renamed over $path. $gid: group of the
  * file (a web pool that has to read it).
  */
-function bot_write(string $path, string $data, int $mode = 0600, ?int $gid = null): void
+function bot_write(string $path, string $data, int $mode = 0600, ?int $gid = null, bool $lock = true): void
 {
-    bot_lock($path, function () use ($path, $data, $mode, $gid) {
+    $write = function () use ($path, $data, $mode, $gid) {
         $tmp = dirname($path) . '/.' . basename($path) . '.' . bin2hex(random_bytes(6)) . '.tmp';
         $f   = @fopen($tmp, 'x');
         if ($f === false) {
@@ -98,7 +98,9 @@ function bot_write(string $path, string $data, int $mode = 0600, ?int $gid = nul
             @unlink($tmp);
             throw new RuntimeException("cannot write $path");
         }
-    });
+    };
+    // $lock false: the caller holds the lock of the file this one belongs to
+    $lock ? bot_lock($path, $write) : $write();
 }
 
 // the file's content; an exception if it cannot be read (never a default)
