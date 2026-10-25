@@ -2,7 +2,8 @@
 set -e
 
 ssh-keygen -A
-exec /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
+# sshd: the bot's commands; started again if it stops
+sh /scripts/supervise.sh sshd "" 0 /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
 
 WGCF_DIR="/etc/warp"
 WGCF_CONF="$WGCF_DIR/wgcf-profile.conf"

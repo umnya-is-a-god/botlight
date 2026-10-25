@@ -1,6 +1,7 @@
 #!/bin/sh
 ssh-keygen -A
-/usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
+# sshd: the bot's commands; started again if it stops
+sh /scripts/supervise.sh sshd "" 0 /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
 
 # Egress filter: Xray clients must not reach the server's internal networks
 # or the host. Xray's routing already blocks private destination IPs; this

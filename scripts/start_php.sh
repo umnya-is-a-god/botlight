@@ -22,9 +22,11 @@ if [ -s /ssh/key.pub ]; then
     # configs in place and in the current format before the other
     # containers start (they wait for php to be healthy)
     php prepare.php || echo "prepare.php failed, see /logs/php_error" >&2
-    # the web pools run as their own users (system/php-fpm.conf)
-    php-fpm83 -y /system/php-fpm.conf -c /system/php.ini &
-    php init.php
+    # the web pools run as their own users (system/php-fpm.conf); both
+    # processes are started again if they stop, the bot also if its loop
+    # hangs (no heartbeat for 10 minutes)
+    sh /scripts/supervise.sh php-fpm "" 0 php-fpm83 -y /system/php-fpm.conf -c /system/php.ini &
+    exec sh /scripts/supervise.sh bot /tmp/heartbeat 600 php init.php
 else
     exit 1;
 fi

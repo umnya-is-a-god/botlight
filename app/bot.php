@@ -992,14 +992,26 @@ class Bot
     {
         $period = 10;
         while (true) {
-            $this->checkVersion();
-            $this->checkBackup();
-            $this->checkLogs();
-            $this->checkResetXrayStats();
-            $this->checkCert();
-            $this->autoAnalyzeLogs();
-            $this->xrayStatsUser();
-            $this->checkWarpStatus();
+            // each step on its own: an error in one (even a TypeError) must
+            // not stop the loop or the steps after it
+            foreach ([
+                'checkVersion',
+                'checkBackup',
+                'checkLogs',
+                'checkResetXrayStats',
+                'checkCert',
+                'autoAnalyzeLogs',
+                'xrayStatsUser',
+                'checkWarpStatus',
+            ] as $step) {
+                try {
+                    $this->$step();
+                } catch (Throwable $e) {
+                    error_log("cron $step: $e");
+                }
+            }
+            // scripts/supervise.sh restarts the loop if this gets old
+            @touch('/tmp/cron_heartbeat');
             sleep($period);
         }
     }
@@ -1181,8 +1193,9 @@ class Bot
                     }
                 }
             }
-        } catch (Exception $e) {
-            file_put_contents('/logs/php_error', $e->getMessage());
+        } catch (Throwable $e) {
+            // appended to /logs/php_error (php.ini error_log), not over it
+            error_log("autoAnalyzeLogs: $e");
         }
     }
 
@@ -1500,7 +1513,8 @@ class Bot
                     }
                 }
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            error_log("checkCert: $e");
         }
     }
 
@@ -5095,42 +5109,57 @@ class Bot
     public function analyzeXray()
     {
         while (true) {
-            if (!empty($this->getPacConf()['ip_limit'])) {
-                $this->pool = [];
-                $log = '/logs/xray';
-                // Xray creates the log after its restart with the limit on
-                if (!($r = @fopen($log, 'r'))) {
-                    sleep(10);
-                    continue;
+            try {
+                $this->analyzeXrayRound();
+            } catch (Throwable $e) {
+                error_log("analyzeXray: $e");
+            }
+            @touch('/tmp/iplimit_heartbeat');
+            sleep(10);
+        }
+    }
+
+    // follows the Xray access log while the IP limit is on
+    public function analyzeXrayRound()
+    {
+        if (empty($this->getPacConf()['ip_limit'])) {
+            return;
+        }
+        $this->pool = [];
+        $log = '/logs/xray';
+        // Xray creates the log after its restart with the limit on
+        if (!($r = @fopen($log, 'r'))) {
+            return;
+        }
+        try {
+            fseek($r, 0, SEEK_END);
+            while (true) {
+                @touch('/tmp/iplimit_heartbeat');
+                $pac = $this->getPacConf();
+                if (empty($pac['ip_limit'])) {
+                    break;
                 }
-                fseek($r, 0, SEEK_END);
-                while (true) {
-                    $pac = $this->getPacConf();
-                    if (empty($pac['ip_limit'])) {
-                        break;
-                    }
-                    $currentPosition = ftell($r);
-                    clearstatcache();
-                    $fileSize = (int) @filesize($log);
-                    if ($fileSize < $currentPosition) {
-                        // the log was cleaned: read it from the start
-                        fseek($r, 0);
-                        $currentPosition = 0;
-                    }
-                    if ($fileSize > $currentPosition) {
-                        fseek($r, $currentPosition); // сброс флага feof
-                        while (!feof($r)) {
-                            $line = fgets($r);
-                            if ($line !== false) {
-                                $this->frequencyAnalyze($line, $pac);
-                            }
+                $currentPosition = ftell($r);
+                clearstatcache();
+                $fileSize = (int) @filesize($log);
+                if ($fileSize < $currentPosition) {
+                    // the log was cleaned or rotated (copytruncate): read it from the start
+                    fseek($r, 0);
+                    $currentPosition = 0;
+                }
+                if ($fileSize > $currentPosition) {
+                    fseek($r, $currentPosition); // сброс флага feof
+                    while (!feof($r)) {
+                        $line = fgets($r);
+                        if ($line !== false) {
+                            $this->frequencyAnalyze($line, $pac);
                         }
                     }
-                    sleep(1);
                 }
-                fclose($r);
+                sleep(1);
             }
-            sleep(10);
+        } finally {
+            fclose($r);
         }
     }
 
@@ -7415,37 +7444,50 @@ class Bot
     {
         $offset = -1;
         while (true) {
-            $r = $this->request('getUpdates', [
-                'offset'          => $offset,
-                'limit'           => 3,
-                'timeout'         => 5,
-                // explicit: without it Telegram keeps the list from an
-                // earlier webhook or bot on this token, which may leave out
-                // button presses (callback_query)
-                'allowed_updates' => json_encode(['message', 'callback_query', 'inline_query', 'channel_post', 'my_chat_member']),
-            ]);
-            if (!empty($r['description'])) {
-                error_log('getUpdates error: ' . $r['description']);
+            try {
+                $offset = $this->pollingRound($offset);
+            } catch (Throwable $e) {
+                error_log("polling: $e");
                 sleep(3);
-                continue;
-            }
-            file_put_contents('/start', 1);
-            if (!empty($r['result'])) {
-                foreach ($r['result'] as $v) {
-                    try {
-                        $this->input($v);
-                    } catch (Throwable $e) {
-                        error_log($e);
-                    } finally {
-                        session_write_close();
-                    }
-                    $offset = max($offset, $v['update_id']);
-                }
-                $offset++;
-            } else {
-                sleep(1);
             }
         }
+    }
+
+    // one getUpdates and its updates; the next offset
+    public function pollingRound(int $offset): int
+    {
+        $r = $this->request('getUpdates', [
+            'offset'          => $offset,
+            'limit'           => 3,
+            'timeout'         => 5,
+            // explicit: without it Telegram keeps the list from an
+            // earlier webhook or bot on this token, which may leave out
+            // button presses (callback_query)
+            'allowed_updates' => json_encode(['message', 'callback_query', 'inline_query', 'channel_post', 'my_chat_member']),
+        ]);
+        // the loop is alive: healthcheck and scripts/supervise.sh read it
+        @touch('/tmp/heartbeat');
+        if (!empty($r['description'])) {
+            error_log('getUpdates error: ' . $r['description']);
+            sleep(3);
+            return $offset;
+        }
+        if (!empty($r['result'])) {
+            foreach ($r['result'] as $v) {
+                try {
+                    $this->input($v);
+                } catch (Throwable $e) {
+                    error_log($e);
+                } finally {
+                    session_write_close();
+                }
+                $offset = max($offset, $v['update_id']);
+            }
+            $offset++;
+        } else {
+            sleep(1);
+        }
+        return $offset;
     }
 
     public function setcommands()

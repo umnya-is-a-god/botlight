@@ -21,9 +21,9 @@ if ip6tables -F OUTPUT 2>/dev/null; then
 fi
 
 if [ "$fw" = ok ]; then
-    /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
+    sh /scripts/supervise.sh sshd "" 0 /usr/sbin/sshd -f /system/sshd_config -D -e "$@" &
 else
     echo "dnstt: firewall rules failed, tunnel logins disabled" >&2
-    /usr/sbin/sshd -f /system/sshd_config -D -e -o DenyUsers=vpnbot "$@" &
+    sh /scripts/supervise.sh sshd "" 0 /usr/sbin/sshd -f /system/sshd_config -D -e -o DenyUsers=vpnbot "$@" &
 fi
 tail -f /dev/null

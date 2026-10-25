@@ -58,6 +58,7 @@ services:
             - 443:443/udp
         hostname: upstream
         container_name: upstream-${VER}
+        restart: unless-stopped
         depends_on:
             ng:
                 condition: service_healthy
@@ -118,6 +119,7 @@ services:
             - 80:80
         hostname: nginx
         container_name: nginx-${VER}
+        restart: unless-stopped
         env_file:
             - path: ./.env
               required: true # default
@@ -196,7 +198,7 @@ services:
               required: false
         hostname: php
         container_name: php-${VER}
-        # restart: unless-stopped
+        restart: unless-stopped
         stop_grace_period: 1s
         command: ["/bin/sh", "/scripts/start_php.sh"]
         working_dir: /app
@@ -204,8 +206,9 @@ services:
             default:
                 ipv4_address: 10.10.0.7
         logging: *default-logging
+        # the bot's polling loop touches /tmp/heartbeat on every round
         healthcheck:
-            test: ["CMD", "/bin/sh", "/scripts/check_file.sh"]
+            test: ["CMD", "/bin/sh", "/scripts/check_file.sh", "120", "/tmp/heartbeat"]
             interval: 5s
             timeout: 5s
             retries: 5
@@ -258,10 +261,17 @@ services:
               required: false
         hostname: service
         container_name: service-${VER}
-        # restart: unless-stopped
+        restart: unless-stopped
         stop_grace_period: 1s
         command: ["/bin/sh", "/scripts/start_service.sh"]
         working_dir: /app
+        # the cron loop and the IP limit loop touch their heartbeat files
+        healthcheck:
+            test: ["CMD", "/bin/sh", "/scripts/check_file.sh", "300", "/tmp/cron_heartbeat", "/tmp/iplimit_heartbeat"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 120s
         networks:
             default:
                 ipv4_address: 10.10.0.15
@@ -314,6 +324,7 @@ services:
             - ./logs/:/logs/
         hostname: adguard
         container_name: adguard-${VER}
+        restart: unless-stopped
         depends_on:
             php:
                 condition: service_healthy
@@ -364,6 +375,7 @@ services:
             - ./logs:/logs
         hostname: xray
         container_name: xray-${VER}
+        restart: unless-stopped
         depends_on:
             php:
                 condition: service_healthy
@@ -418,6 +430,7 @@ services:
             - ./certs:/certs:ro
         hostname: ocserv
         container_name: openconnect-${VER}
+        restart: unless-stopped
         depends_on:
             php:
                 condition: service_healthy
@@ -473,6 +486,7 @@ services:
             - warp:/etc/warp
         hostname: warp
         container_name: warp-${VER}
+        restart: unless-stopped
         command: ["/bin/sh", "/scripts/start_wp.sh"]
         depends_on:
             php:
@@ -523,6 +537,7 @@ services:
             - ./data/dnstt:/dnstt
         hostname: dnstt
         container_name: dnstt-${VER}
+        restart: unless-stopped
         depends_on:
             php:
                 condition: service_healthy
