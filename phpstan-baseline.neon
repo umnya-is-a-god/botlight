@@ -81,12 +81,6 @@ parameters:
 			path: app/bot.php
 
 		-
-			message: '#^Variable \$ret might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/bot.php
-
-		-
 			message: '#^Variable \$ruleset might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
