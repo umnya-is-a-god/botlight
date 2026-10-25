@@ -28,6 +28,7 @@ RUN apk upgrade --no-cache \
     php83-intl \
     php83-pecl-ssh2 \
     php83-pecl-yaml \
+    php83-sodium \
     xxd \
     certbot \
     libqrencode-tools \

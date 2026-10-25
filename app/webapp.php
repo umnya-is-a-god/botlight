@@ -168,6 +168,108 @@ switch ($route) {
         echo json_encode($bot->saveTemplate($_POST['name'], $_POST['type'], $_POST['json']));
         break;
 
+    // secrets: a page without data; the values come by POST with initData
+    case '/secrets':
+        header('Content-Type: text/html');
+        $title = json_encode($bot->i18n('secrets'), $js);
+        echo <<<HTML
+            <!DOCTYPE HTML>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <script src="$base/jquery-3.7.1.min.js"></script>
+                <script src="https://telegram.org/js/telegram-web-app.js"></script>
+                <style>
+                    body { font-family: sans-serif; margin: 16px; color: var(--tg-theme-text-color, #000); background: var(--tg-theme-bg-color, #fff); }
+                    .item { margin: 0 0 14px; }
+                    .label { font-size: 13px; opacity: .7; }
+                    .value { font-family: monospace; word-break: break-all; padding: 6px 0; }
+                    button { padding: 6px 12px; }
+                </style>
+            </head>
+            <body>
+                <h3 id="title"></h3>
+                <div id="list">...</div>
+                <script>
+                    jQuery(function($) {
+                        var tg = window.Telegram.WebApp;
+                        $('#title').text($title);
+                        var q = new URLSearchParams(location.search);
+                        $.ajax({
+                            url: '$base/secrets/data',
+                            method: 'POST',
+                            data: {initData: tg.initData, s: q.get('s') || ''},
+                            dataType: 'json'
+                        }).done(function (r) {
+                            var list = $('#list').empty();
+                            r.items.forEach(function (e) {
+                                var v = $('<div class="value">').text(e[1] || '—');
+                                var item = $('<div class="item">').append($('<div class="label">').text(e[0]), v);
+                                if (e[1] && navigator.clipboard) {
+                                    item.append($('<button>').text('copy').on('click', function () {
+                                        navigator.clipboard.writeText(e[1]);
+                                    }));
+                                }
+                                list.append(item);
+                            });
+                            if (r.warp_profile) {
+                                list.append($('<button>').text('download WARP profile').on('click', function () {
+                                    if (tg.downloadFile) {
+                                        tg.downloadFile({url: r.warp_profile, file_name: 'warp.conf'});
+                                    } else {
+                                        location.href = r.warp_profile;
+                                    }
+                                }));
+                            }
+                        }).fail(function () {
+                            $('#list').text('access denied');
+                        });
+                    });
+                </script>
+            </body>
+            </html>
+            HTML;
+        break;
+
+    case '/secrets/data':
+        header('Content-Type: application/json');
+        if ($admin === null) {
+            header('403', true, 403);
+            echo '{}';
+            break;
+        }
+        $sections = in_array($_POST['s'] ?? '', ['adguard', 'ocserv', 'dnstt', 'warp'], true) ? [$_POST['s']] : ['adguard', 'ocserv', 'dnstt', 'warp'];
+        $items    = [];
+        foreach ($sections as $sec) {
+            foreach ($bot->secretsOf($sec) as $k => $v) {
+                $items[] = [$k, $v];
+            }
+        }
+        $profile = null;
+        if (in_array('warp', $sections, true) && is_file(BOT_DATA . '/secrets/warp-profile.conf')) {
+            // a download link for two minutes, signed with the pool's key
+            $exp     = time() + 120;
+            $profile = "$base/warp-profile?e=$exp&t=" . hash_hmac('sha256', "warp-profile|$exp", (string) hex2bin((string) ($bot->webSecrets()['initdata_key'] ?? '')));
+        }
+        echo json_encode(['items' => $items, 'warp_profile' => $profile], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        break;
+
+    // the WARP WireGuard profile: only with a fresh link from /secrets/data
+    case '/warp-profile':
+        $exp = (int) ($_GET['e'] ?? 0);
+        $key = (string) hex2bin((string) ($bot->webSecrets()['initdata_key'] ?? ''));
+        $tok = is_string($_GET['t'] ?? null) ? $_GET['t'] : '';
+        if ($key === '' || $exp < time() || $exp > time() + 300 || !hash_equals(hash_hmac('sha256', "warp-profile|$exp", $key), $tok)
+            || !is_file(BOT_DATA . '/secrets/warp-profile.conf')) {
+            header('403', true, 403);
+            break;
+        }
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="warp.conf"');
+        readfile(BOT_DATA . '/secrets/warp-profile.conf');
+        break;
+
     default:
         header('404', true, 404);
 }

@@ -40,6 +40,9 @@ class Bot
     public $web;
     // AdGuard's config was changed since it was last started
     public $adguardChanged = false;
+    // messages to delete later: [chat, message id, time]
+    public $later = [];
+    public $time_warp_profile;
 
     public function __construct($key, $i18n, $web = false)
     {
@@ -465,6 +468,9 @@ class Bot
             case preg_match('~^/warp$~', $this->input['callback'], $m):
                 $this->warp();
                 break;
+            case preg_match('~^/secrets (adguard|ocserv|dnstt|warp)$~', $this->input['callback'], $m):
+                $this->showSecrets($m[1]);
+                break;
             case preg_match('~^/warpPlus$~', $this->input['callback'], $m):
                 $this->warpPlus();
                 break;
@@ -751,10 +757,15 @@ class Bot
     {
         $this->dataPermissions();
         $pac = $this->getPacConf();
-        if (isset($pac['singtemplates']) || isset($pac['clashtemplates'])) {
-            // templates of earlier versions, kept in the settings
+        if (isset($pac['singtemplates']) || isset($pac['clashtemplates']) || array_intersect_key($pac, array_flip(['adpswd', 'ocserv', 'dnsttPassword', 'warp', 'backup_password'])) || isset($pac['reality']['privateKey'])) {
+            // templates and secrets of earlier versions, kept in the settings
             $this->importPac($pac);
         }
+        // the camouflage secret, for the Mini App (ocserv.conf is root only)
+        if (preg_match('~^camouflage_secret\s*=\s*"([^"\n]*)"~m', (string) @file_get_contents(BOT_DATA . '/ocserv/ocserv.conf'), $m)) {
+            $this->setSecret('oc_camouflage', $m[1]);
+        }
+        $this->syncWarpProfile();
         $this->getHashBot();
         $this->getAdminHash();
         $this->getHashSubdomain('oc');
@@ -831,7 +842,7 @@ class Bot
      */
     public function writeWarpKey()
     {
-        $key = (string) ($this->getPacConf()['warp'] ?? '');
+        $key = $this->secret('warp');
         if (is_dir('/etc/warp')) {
             bot_write('/etc/warp/license_key', preg_match('~^[A-Za-z0-9-]{1,64}$~D', $key) ? "$key\n" : '');
         }
@@ -1000,7 +1011,7 @@ class Bot
         }
         $this->ssh('pkill ocserv', 'oc');
         $pac = $this->getPacConf();
-        if (!empty($pac['ocserv']) && !empty($this->getHashSubdomain('oc'))) {
+        if ($this->secret('ocserv') !== '' && !empty($this->getHashSubdomain('oc'))) {
             $this->ssh('ocserv -c /etc/ocserv/ocserv.conf', 'oc');
             if ($this->sshRun('sleep 1; pgrep ocserv > /dev/null', 'oc')['rc'] === 1 && is_file('/certs/cert_public')) {
                 // it does not start with the new config: the previous one back
@@ -1049,7 +1060,9 @@ class Bot
         }
         $c = bot_read(BOT_DATA . '/ocserv/ocserv.conf');
         $t = preg_replace('~^camouflage_secret[^\n]+~sm', "camouflage_secret = \"$pass\"", $c);
-        $this->restartOcserv($t);
+        if ($this->restartOcserv($t)) {
+            $this->setSecret('oc_camouflage', $pass);
+        }
         $this->menu('oc');
     }
 
@@ -1070,9 +1083,7 @@ class Bot
             $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
             return;
         }
-        $pac = $this->getPacConf();
-        $pac['ocserv'] = $pass;
-        $this->setPacConf($pac);
+        $this->setSecret('ocserv', $pass);
         $this->ocPasswd(array_fill_keys($this->getClientsOc(), $pass));
         $this->restartOcserv(bot_read(BOT_DATA . '/ocserv/ocserv.conf'));
         $this->menu('oc');
@@ -1448,35 +1459,90 @@ class Bot
 
     /**
      * Backups hold every key and password of the server and go to Telegram,
-     * so they are encrypted: AES-256-GCM (authenticated) with a key from the
-     * backup password via PBKDF2-SHA256.
+     * so they are encrypted. The server keeps no backup password, only a
+     * public key: the password gives, through Argon2id, the seed of an
+     * X25519 key pair; a backup is a sealed box for its public key and
+     * only that password opens it again (restore asks for it).
      */
-    public function encryptBackup(string $plain, string $pass): string
+    const BACKUP_OPS = 3;
+    const BACKUP_MEM = 67108864;
+
+    // the backup public key and how it was made, [] if none is set
+    public function backupKey(): array
     {
-        $salt = random_bytes(16);
-        $iv   = random_bytes(12);
-        $iter = 600000;
-        $key  = hash_pbkdf2('sha256', $pass, $salt, $iter, 32, true);
-        $data = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+        $f = BOT_DATA . '/secrets/backup_key.json';
+        return is_file($f) ? bot_read_json($f) : [];
+    }
+
+    public function setBackupKey(?string $pass)
+    {
+        $f = BOT_DATA . '/secrets/backup_key.json';
+        if ($pass === null) {
+            @unlink($f);
+            return;
+        }
+        $salt = random_bytes(SODIUM_CRYPTO_PWHASH_SALTBYTES);
+        $kp   = $this->backupKeyPair($pass, $salt, self::BACKUP_OPS, self::BACKUP_MEM);
+        bot_write_json($f, [
+            'kdf'  => 'argon2id',
+            'ops'  => self::BACKUP_OPS,
+            'mem'  => self::BACKUP_MEM,
+            'salt' => base64_encode($salt),
+            'pk'   => base64_encode(sodium_crypto_box_publickey($kp)),
+        ]);
+        sodium_memzero($kp);
+    }
+
+    public function backupKeyPair(string $pass, string $salt, int $ops, int $mem): string
+    {
+        $seed = sodium_crypto_pwhash(SODIUM_CRYPTO_BOX_SEEDBYTES, $pass, $salt, $ops, $mem, SODIUM_CRYPTO_PWHASH_ALG_ARGON2ID13);
+        $kp   = sodium_crypto_box_seed_keypair($seed);
+        sodium_memzero($seed);
+        return $kp;
+    }
+
+    public function encryptBackup(string $plain): string
+    {
+        $k = $this->backupKey();
         return json_encode([
-            'vpnbot_backup' => 1,
-            'kdf'           => 'pbkdf2-sha256',
-            'iter'          => $iter,
-            'salt'          => base64_encode($salt),
-            'cipher'        => 'aes-256-gcm',
-            'iv'            => base64_encode($iv),
-            'tag'           => base64_encode($tag),
-            'data'          => base64_encode($data),
+            'vpnbot_backup' => 2,
+            'kdf'           => 'argon2id',
+            'ops'           => (int) $k['ops'],
+            'mem'           => (int) $k['mem'],
+            'salt'          => $k['salt'],
+            'cipher'        => 'x25519-xsalsa20poly1305-sealed',
+            'pk'            => $k['pk'],
+            'data'          => base64_encode(sodium_crypto_box_seal($plain, base64_decode($k['pk']))),
         ]);
     }
 
-    // null: wrong password or damaged file
+    /**
+     * null: wrong password or damaged file. Version 2: sealed box (above);
+     * version 1 (earlier backups): AES-256-GCM, key from PBKDF2-SHA256.
+     * The work factors come from the file: only within bounds.
+     */
     public function decryptBackup(array $env, string $pass): ?string
     {
+        if ((int) ($env['vpnbot_backup'] ?? 0) === 2) {
+            $ops  = (int) ($env['ops'] ?? 0);
+            $mem  = (int) ($env['mem'] ?? 0);
+            $salt = (string) base64_decode((string) ($env['salt'] ?? ''), true);
+            if (!function_exists('sodium_crypto_pwhash') || ($env['kdf'] ?? '') !== 'argon2id' || $ops < 1 || $ops > 10
+                || $mem < 8388608 || $mem > 268435456 || strlen($salt) !== SODIUM_CRYPTO_PWHASH_SALTBYTES) {
+                return null;
+            }
+            $kp = $this->backupKeyPair($pass, $salt, $ops, $mem);
+            if (!hash_equals((string) base64_decode((string) ($env['pk'] ?? '')), sodium_crypto_box_publickey($kp))) {
+                return null;
+            }
+            $plain = sodium_crypto_box_seal_open((string) base64_decode((string) ($env['data'] ?? '')), $kp);
+            sodium_memzero($kp);
+            return $plain === false ? null : $plain;
+        }
         if (($env['cipher'] ?? '') !== 'aes-256-gcm' || ($env['kdf'] ?? '') !== 'pbkdf2-sha256') {
             return null;
         }
-        $iter  = max(100000, min(10000000, (int) ($env['iter'] ?? 0)));
+        $iter  = max(100000, min(2000000, (int) ($env['iter'] ?? 0)));
         $key   = hash_pbkdf2('sha256', $pass, (string) base64_decode($env['salt'] ?? ''), $iter, 32, true);
         $plain = openssl_decrypt((string) base64_decode($env['data'] ?? ''), 'aes-256-gcm', $key, OPENSSL_RAW_DATA, (string) base64_decode($env['iv'] ?? ''), (string) base64_decode($env['tag'] ?? ''));
         return $plain === false ? null : $plain;
@@ -1486,14 +1552,13 @@ class Bot
     public function sendBackup()
     {
         $c = $this->config();
-        $conf = $this->getPacConf();
-        $json = $this->export();
-        if (empty($conf['backup_password'])) {
+        if (!$this->backupKey()) {
             $this->send($c['admin'][0], 'backup not sent: set a backup password in Settings, backups are only sent encrypted');
             return;
         }
+        $json = $this->export();
         $bot = preg_replace('~[\W]~iu', '_', $this->request('getMyName', [])['result']['name']);
-        $this->sendFile($c['admin'][0], new CURLStringFile($this->encryptBackup($json, $conf['backup_password']), "{$bot}_backup_" . date('d_m_Y_H_i') . '.enc.json', 'application/json'));
+        $this->sendFile($c['admin'][0], new CURLStringFile($this->encryptBackup($json), "{$bot}_backup_" . date('d_m_Y_H_i') . '.enc.json', 'application/json'));
     }
 
     public function backupPassword()
@@ -1512,19 +1577,20 @@ class Bot
         ];
     }
 
+    // the password message is deleted (reply()); only the public key stays
     public function setBackupPassword($text)
     {
         $text = trim((string) $text);
-        $c    = $this->getPacConf();
         if ($text === '-') {
-            unset($c['backup_password']);
+            $this->setBackupKey(null);
+        } elseif (!function_exists('sodium_crypto_pwhash')) {
+            $this->send($this->input['chat'], 'no sodium in PHP: rebuild the images (Settings -> rebuild images)');
         } elseif (preg_match('~^[^\x00-\x1f\x7f]{8,128}$~uD', $text)) {
-            $c['backup_password'] = $text;
+            $this->setBackupKey($text);
+            $this->send($this->input['chat'], 'backup password set: it is not stored, keep it yourself; restoring a backup asks for it');
         } else {
             $this->send($this->input['chat'], 'wrong password: 8-128 printable characters');
-            return $this->menu('config');
         }
-        $this->setPacConf($c);
         $this->menu('config');
     }
 
@@ -1728,6 +1794,13 @@ class Bot
     public function exportPac(): array
     {
         $pac = $this->getPacConf();
+        foreach ($this->secrets() as $k => $v) {
+            if ($k === 'reality_privateKey') {
+                $pac['reality']['privateKey'] = $v;
+            } elseif ($k !== 'oc_camouflage') {
+                $pac[$k] = $v;
+            }
+        }
         foreach (['sing', 'clash'] as $type) {
             if ($t = $this->getTemplates($type)) {
                 $pac["{$type}templates"] = $t;
@@ -1752,7 +1825,7 @@ class Bot
             }
             unset($pac["{$type}templates"], $pac["{$type}origin"]);
         }
-        $this->setPacConf($pac);
+        $this->setPacConf($this->moveSecrets($pac));
         $this->writeWarpKey();
     }
 
@@ -1815,8 +1888,8 @@ class Bot
             $json = json_decode(file_get_contents($this->file . $r['result']['file_path']), true);
         }
         if (is_array($json) && !empty($json['vpnbot_backup'])) {
-            // encrypted: the password set on this server, else the one typed
-            $pass  = $password ?? ($this->getPacConf()['backup_password'] ?? '');
+            // encrypted: the password is asked for (not kept on the server)
+            $pass  = (string) $password;
             $plain = $pass !== '' ? $this->decryptBackup($json, $pass) : null;
             if ($plain === null) {
                 if ($password !== null) {
@@ -2336,13 +2409,15 @@ class Bot
 
     public function adguardSync()
     {
-        $pac = $this->getPacConf();
-        $pac['adpswd'] = $pac['adpswd'] ?: bin2hex(random_bytes(8));
-        $this->setPacConf($pac);
+        $pac  = $this->getPacConf();
+        $pass = $this->secret('adpswd');
+        if ($pass === '') {
+            $this->setSecret('adpswd', $pass = bin2hex(random_bytes(8)));
+        }
         $ssl = $this->nginxGetTypeCert();
         $c   = $this->getAdguard();
         $this->stopAd();
-        $c['users'][0]['password'] = password_hash($pac['adpswd'], PASSWORD_DEFAULT);
+        $c['users'][0]['password'] = password_hash($pass, PASSWORD_DEFAULT);
         if (!empty($ssl) && !empty($pac['domain']) && empty($c['tls']['enabled'])) {
             $c['tls']['enabled']     = true;
             $c['tls']['server_name'] = $pac['domain'];
@@ -2655,9 +2730,7 @@ class Bot
         $c = $this->getAdguard();
         $c['users'][0]['password'] = password_hash($pass, PASSWORD_DEFAULT);
         $this->saveAdguard($c);
-        $p = $this->getPacConf();
-        $p['adpswd'] = $pass;
-        $this->setPacConf($p);
+        $this->setSecret('adpswd', $pass);
         $out[] = $this->startAd();
         $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
         sleep(3);
@@ -3430,17 +3503,11 @@ class Bot
 
     public function setdnsttPassword($text)
     {
-        $c = $this->getPacConf();
         if ($text && !$this->validSecret($text = trim((string) $text))) {
             $this->send($this->input['chat'], 'wrong password: 1-128 printable characters, no ":"');
             return;
         }
-        if ($text) {
-            $c['dnsttPassword'] = $text;
-        } else {
-            unset($c['dnsttPassword']);
-        }
-        $this->setPacConf($c);
+        $this->setSecret('dnsttPassword', $text ? (string) $text : null);
         $this->dnsttStart();
         $this->dnstt(true); // edits the DNSTT menu message
     }
@@ -3465,6 +3532,7 @@ class Bot
     public function dnsttStart()
     {
         $c = $this->getPacConf();
+        $c['dnsttPassword'] = $this->secret('dnsttPassword');
         $this->ssh('pkill dnstt', 'dnstt');
         // the domain goes into a background "sh -c" command: allow hostnames only
         if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword']) && preg_match('~^[A-Za-z0-9.-]{1,253}$~D', $c['dnsttDomain'])) {
@@ -3489,9 +3557,10 @@ class Bot
         $c      = $this->getPacConf();
         $pubkey = (string) @file_get_contents(BOT_DATA . '/dnstt/server.pub');
         $text[] = "dnstt";
-        if (!empty($c['dnsttDomain']) && !empty($c['dnsttPassword'])) {
+        if (!empty($c['dnsttDomain']) && $this->secret('dnsttPassword') !== '') {
             $text[] = "<pre>set the NS record for {$c['dnsttDomain']}: tns.{$c['domain']}\nset A record for tns.{$c['domain']}: {$this->ip}</pre>";
-            $text[] = 'account: <code>vpnbot:' . htmlspecialchars($c['dnsttPassword']) . '</code>';
+            // the password: in the Mini App (secrets)
+            $text[] = 'account: <code>vpnbot</code>, password: ' . $this->mask($this->secret('dnsttPassword'));
             $text[] = "server name: <code>{$c['dnsttDomain']}</code>";
             $text[] = "public key: <code>$pubkey</code>";
             $data[] = [
@@ -3499,6 +3568,7 @@ class Bot
                     'text'          => $this->i18n('download pubkey'),
                     'callback_data' => "/dnsttDownload",
                 ],
+                $this->secretsButton('dnstt'),
             ];
         } else {
             $text[] = "set subdomain and password";
@@ -4605,16 +4675,12 @@ class Bot
     {
         $pac    = $this->getPacConf();
         $domain = $this->getDomain();
-        $ocserv = bot_read(BOT_DATA . '/ocserv/ocserv.conf');
-        preg_match('~^camouflage_secret[^\n]+?"([^"]+)*"~sm', $ocserv, $m);
-        $cs = $m[1];
-        $pass   = htmlspecialchars((string) ($pac['ocserv'] ?? ''));
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('ocserv');
-        if (!empty($cs)) {
-            $oc = $this->getHashSubdomain('oc');
-            $text[] = "<code>https://$oc.$domain/?" . htmlspecialchars((string) $cs) . "</code>";
-        }
-        $text[] = "password: <span class='tg-spoiler'>$pass</span>";
+        // the login link (with the camouflage secret) and the password: in
+        // the Mini App (secrets), here only masked
+        $oc     = $this->getHashSubdomain('oc');
+        $text[] = "https://$oc.$domain/?" . $this->mask($this->secret('oc_camouflage'));
+        $text[] = 'password: ' . $this->mask($this->secret('ocserv'));
         $data[] = [
             [
                 'text'          => $this->i18n('change subdomain'),
@@ -4634,6 +4700,7 @@ class Bot
                 'text'          => $this->i18n('add peer'),
                 'callback_data' => "/addOcUser",
             ],
+            $this->secretsButton('ocserv'),
         ];
         $clients = $this->getClientsOc();
         foreach ($clients as $k => $v) {
@@ -4732,12 +4799,11 @@ class Bot
             $this->send($this->input['chat'], "user $name already exists");
             return $this->ocUser($i);
         }
-        $pac = $this->getPacConf();
-        if ((string) ($pac['ocserv'] ?? '') === '') {
+        if (($pass = $this->secret('ocserv')) === '') {
             $this->send($this->input['chat'], 'set the OpenConnect password first');
             return $this->ocUser($i);
         }
-        $this->ocPasswd([$name => $pac['ocserv']], [$old]);
+        $this->ocPasswd([$name => $pass], [$old]);
         return $this->ocUser($this->shortId($name));
     }
 
@@ -4833,13 +4899,12 @@ class Bot
             $this->send($this->input['chat'], 'wrong name: A-Z a-z 0-9 . _ @ -');
             return;
         }
-        $pac = $this->getPacConf();
-        if ((string) ($pac['ocserv'] ?? '') === '') {
+        if (($pass = $this->secret('ocserv')) === '') {
             // a user without the shared password could log in with an empty one
             $this->send($this->input['chat'], 'set the OpenConnect password first');
             return $this->menu('oc');
         }
-        $this->ocPasswd([$user => $pac['ocserv']]);
+        $this->ocPasswd([$user => $pass]);
         $this->menu('oc');
     }
 
@@ -5520,7 +5585,7 @@ class Bot
         $key  = trim((string) $key);
         if ($key === '+') {
             // re-registration with the current key
-            $key = (string) ($c['warp'] ?? '');
+            $key = $this->secret('warp');
         } elseif ($key === '-') {
             $key = '';
         }
@@ -5558,7 +5623,7 @@ class Bot
         }
 
         if (!empty($key)) {
-            $c['warp'] = $key;
+            $this->setSecret('warp', $key);
             // Заменяем ключ в wgcf-account.toml
             if (!$step('setting license key', "sed -i 's/^license_key.*/license_key = \"$key\"/' /etc/warp/wgcf-account.toml", 'wp')) {
                 $this->send($chat, $log);
@@ -5570,7 +5635,7 @@ class Bot
                 return;
             }
         } else {
-            unset($c['warp']);
+            $this->setSecret('warp', null);
         }
         $this->setPacConf($c);
         $this->writeWarpKey();
@@ -5737,22 +5802,24 @@ class Bot
         }
     }
 
+    /**
+     * WARP: status and the masked WARP+ key. The account file (private key,
+     * access token) and the WireGuard profile never go into the chat: the
+     * key and the profile are in the Mini App (secrets).
+     */
     public function warp()
     {
-        $p      = $this->getPacConf();
-        $c      = file_get_contents('/etc/warp/wgcf-profile.conf');
-        $a      = file_get_contents('/etc/warp/wgcf-account.toml');
+        $this->syncWarpProfile();
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('warp');
-        // command output and files go into an HTML message: escaped
+        // command output goes into an HTML message: escaped
         $text[] = "status: <pre>" . htmlspecialchars((string) $this->ssh('wgcf trace', 'wp')) . '</pre>';
-        $text[] = "key: <code>" . htmlspecialchars((string) ($p['warp'] ?? '')) . "</code>";
-        $text[] = "<pre>" . htmlspecialchars((string) $a) . "</pre>";
-        $text[] = "<pre>" . htmlspecialchars((string) $c) . "</pre>";
+        $text[] = 'warp+ key: ' . ($this->secret('warp') !== '' ? $this->mask($this->secret('warp')) : $this->i18n('off'));
         $data[] = [
             [
                 'text'          => $this->i18n('warp+ / re-registration'),
                 'callback_data' => "/warpPlus",
             ],
+            $this->secretsButton('warp'),
         ];
         $data[] = [
             [
@@ -6753,6 +6820,170 @@ class Bot
         return bot_read_json(BOT_DATA . '/secrets/web.json');
     }
 
+    /**
+     * Passwords and keys (/data/secrets/secrets.json, readable by root and
+     * the Mini App pool only): adpswd (AdGuard), ocserv and oc_camouflage
+     * (OpenConnect), dnsttPassword, warp (WARP+ key), reality_privateKey.
+     * Not in pac.json, which the public web pool reads.
+     */
+    const SECRETS = ['adpswd', 'ocserv', 'oc_camouflage', 'dnsttPassword', 'warp', 'reality_privateKey'];
+
+    public function secrets(): array
+    {
+        $f = BOT_DATA . '/secrets/secrets.json';
+        return is_file($f) ? bot_read_json($f) : [];
+    }
+
+    public function secret(string $name): string
+    {
+        return (string) ($this->secrets()[$name] ?? '');
+    }
+
+    // a secret in the chat: only its last 4 characters (••••-AB12)
+    public function mask(string $v): string
+    {
+        if ($v === '') {
+            return $this->i18n('off');
+        }
+        return '••••' . (mb_strlen($v) > 8 ? '-' . htmlspecialchars(mb_substr($v, -4)) : '');
+    }
+
+    /**
+     * The button to a menu's secrets: the Mini App (only over HTTPS with a
+     * valid certificate: Telegram opens Mini Apps by https only), else they
+     * are shown once in the chat and deleted after a minute.
+     */
+    public function secretsButton(string $section): array
+    {
+        $domain = $this->getPacConf()['domain'] ?? '';
+        if ($this->nginxGetTypeCert() && $domain !== '') {
+            return [
+                'text'    => '🔑 ' . $this->i18n('secrets'),
+                'web_app' => ['url' => "https://$domain/webapp{$this->getAdminHash()}/secrets?s=$section"],
+            ];
+        }
+        return [
+            'text'          => '🔑 ' . $this->i18n('secrets'),
+            'callback_data' => "/secrets $section",
+        ];
+    }
+
+    // the secrets of a menu for the Mini App and the shown-once message
+    public function secretsOf(string $section): array
+    {
+        $pac    = $this->getPacConf();
+        $domain = $this->getDomain();
+        switch ($section) {
+            case 'adguard':
+                return [
+                    'AdGuard login'    => 'admin',
+                    'AdGuard password' => $this->secret('adpswd'),
+                ];
+            case 'ocserv':
+                $cs = $this->secret('oc_camouflage');
+                return [
+                    'OpenConnect password' => $this->secret('ocserv'),
+                    'OpenConnect link'     => 'https://' . $this->getHashSubdomain('oc') . ".$domain/" . ($cs !== '' ? "?$cs" : ''),
+                ];
+            case 'dnstt':
+                return [
+                    'DNSTT account'  => 'vpnbot',
+                    'DNSTT password' => $this->secret('dnsttPassword'),
+                    'DNSTT domain'   => (string) ($pac['dnsttDomain'] ?? ''),
+                ];
+            case 'warp':
+                // the key only: the profile is a download in the Mini App
+                return ['WARP+ key' => $this->secret('warp')];
+        }
+        return [];
+    }
+
+    // without HTTPS: the secrets in a message that is deleted after 60 s
+    public function showSecrets(string $section)
+    {
+        $text = [];
+        foreach ($this->secretsOf($section) as $k => $v) {
+            $text[] = htmlspecialchars($k) . ': ' . ($v !== '' ? '<code>' . htmlspecialchars($v) . '</code>' : '—');
+        }
+        $r = $this->send($this->input['chat'], implode("\n", $text ?: ['—']) . "\n\n<i>deleted in a minute</i>", disable_notification: true);
+        if (!empty($r['result']['message_id'])) {
+            $this->deleteLater($this->input['chat'], $r['result']['message_id'], 60);
+        }
+        $this->answer($this->input['callback_id']);
+    }
+
+    // messages to delete later; the polling loop does it (deleteDue)
+    public function deleteLater($chat, $message, int $seconds)
+    {
+        $this->later[] = [$chat, $message, time() + $seconds];
+    }
+
+    public function deleteDue()
+    {
+        foreach ($this->later as $k => [$chat, $message, $at]) {
+            if ($at <= time()) {
+                $this->delete($chat, $message);
+                unset($this->later[$k]);
+            }
+        }
+    }
+
+    /**
+     * A copy of the WARP WireGuard profile for the Mini App download: the
+     * warp volume is root only, the copy is in /data/secrets.
+     */
+    public function syncWarpProfile()
+    {
+        $p = @file_get_contents('/etc/warp/wgcf-profile.conf');
+        $f = BOT_DATA . '/secrets/warp-profile.conf';
+        if (is_string($p) && $p !== '' && $p !== @file_get_contents($f)) {
+            bot_write($f, $p, 0640, BOT_GID_SECRET);
+        } elseif (($p === false || $p === '') && is_file($f) && !is_file('/etc/warp/wgcf-profile.conf')) {
+            @unlink($f);
+        }
+    }
+
+    // '' or null removes it
+    public function setSecret(string $name, ?string $value)
+    {
+        bot_update_json(BOT_DATA . '/secrets/secrets.json', function ($s) use ($name, $value) {
+            if ($value === null || $value === '') {
+                unset($s[$name]);
+            } else {
+                $s[$name] = $value;
+            }
+            return $s;
+        }, 0640, BOT_GID_SECRET, true);
+    }
+
+    /**
+     * Secrets kept in the settings by earlier versions (or in a backup) go
+     * to secrets.json; the plain backup password becomes the backup key.
+     * Returns the settings without them.
+     */
+    public function moveSecrets(array $pac): array
+    {
+        foreach (['adpswd', 'ocserv', 'dnsttPassword', 'warp'] as $k) {
+            if (array_key_exists($k, $pac)) {
+                $this->setSecret($k, is_scalar($pac[$k]) ? (string) $pac[$k] : null);
+                unset($pac[$k]);
+            }
+        }
+        if (isset($pac['reality']['privateKey'])) {
+            $this->setSecret('reality_privateKey', (string) $pac['reality']['privateKey']);
+            unset($pac['reality']['privateKey']);
+        }
+        if (array_key_exists('backup_password', $pac)) {
+            if (is_string($pac['backup_password']) && $pac['backup_password'] !== '' && function_exists('sodium_crypto_pwhash')) {
+                $this->setBackupKey($pac['backup_password']);
+            }
+            if (function_exists('sodium_crypto_pwhash')) {
+                unset($pac['backup_password']);
+            }
+        }
+        return $pac;
+    }
+
     public function getHashBot($notset = false)
     {
         $p = $this->getPacConf();
@@ -6930,7 +7161,8 @@ class Bot
         $hash   = $this->getHashBot();
         $scheme = empty($ssl = $this->nginxGetTypeCert()) ? 'http' : 'https';
         $admin  = $this->getAdminHash();
-        $text   = "$scheme://$domain/adguard$admin\nLogin: admin\nPass: <span class='tg-spoiler'>" . htmlspecialchars((string) ($conf['adpswd'] ?? '')) . "</span>\n\n";
+        // the password: in the Mini App (secrets); the panel needs none there
+        $text   = "$scheme://$domain/adguard$admin\nLogin: admin\nPass: " . $this->mask($this->secret('adpswd')) . "\n\n";
         if ($ssl) {
             $text .= "DNS over HTTPS:\n<code>$ip</code>\n<code>$scheme://$domain/dns-query$hash" . (!empty($conf['adguardkey']) ? "/{$conf['adguardkey']}" : '') . "</code>\n\n";
             $text .= "DNS over TLS:\n<code>tls://" . (!empty($conf['adguardkey'] )? "{$conf['adguardkey']}." : '') . "$domain</code>";
@@ -6959,6 +7191,7 @@ class Bot
                     'text'          => $this->i18n('change password'),
                     'callback_data' => "/adguardpsswd",
                 ],
+                $this->secretsButton('adguard'),
                 [
                     'text'          => 'ClientID' . ($conf['adguardkey'] ? ": {$conf['adguardkey']}" : ''),
                     'callback_data' => "/setAdguardKey",
@@ -7324,7 +7557,7 @@ class Bot
             ],
             [
                 // backups are only sent encrypted with this password
-                'text'          => '🔐 ' . $this->i18n(!empty($conf['backup_password']) ? 'on' : 'off'),
+                'text'          => '🔐 ' . $this->i18n($this->backupKey() ? 'on' : 'off'),
                 'callback_data' => "/backupPassword",
             ],
         ];
@@ -7749,7 +7982,7 @@ class Bot
         $p['reality']['destination'] = $x['inbounds'][0]['streamSettings']['realitySettings']['dest'] ?? $p['reality']['destination'];
         $p['reality']['shortId']     = $x['inbounds'][0]['streamSettings']['realitySettings']['shortIds'][0] ?? $p['reality']['shortId'];
 
-        if (empty($p['xray'])) {
+        if (empty($p['xray']) || $this->secret('reality_privateKey') === '') {
             $shortId = trim($this->ssh('openssl rand -hex 8', 'xr'));
             $keys    = $this->ssh('xray x25519', 'xr');
             // output differs between xray versions:
@@ -7761,7 +7994,7 @@ class Bot
             $public = trim($m[1] ?? '');
             $p['xray'] = $public;
             $p['reality']['shortId']    = $shortId;
-            $p['reality']['privateKey'] = $private;
+            $this->setSecret('reality_privateKey', $private);
         }
 
 
@@ -7797,7 +8030,7 @@ class Bot
                         "maxClientVer" => "",
                         "maxTimeDiff"  => 0,
                         "minClientVer" => "",
-                        "privateKey"   => $p['reality']['privateKey'],
+                        "privateKey"   => $this->secret('reality_privateKey'),
                         "serverNames"  => [
                             $p['reality']['domain'] ?: $x['inbounds'][0]['streamSettings']['realitySettings']['serverNames'][0]
                         ],
@@ -8080,6 +8313,11 @@ class Bot
         ]);
         // the loop is alive: healthcheck and scripts/supervise.sh read it
         @touch('/tmp/heartbeat');
+        $this->deleteDue();
+        if (empty($this->time_warp_profile) || time() - $this->time_warp_profile > 600) {
+            $this->time_warp_profile = time();
+            $this->syncWarpProfile();
+        }
         if (!empty($r['description'])) {
             error_log('getUpdates error: ' . $r['description']);
             sleep(3);
