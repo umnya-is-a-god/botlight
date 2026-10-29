@@ -636,7 +636,8 @@ trait BotLogs
             }
         }
         $this->setPacConf($pac);
-        if (empty($fun)) {
+        // the message with the button; the cron's autoblock has none
+        if (empty($fun) && !empty($this->input['message_id'])) {
             $this->delete($this->input['from'], $this->input['message_id']);
         }
         $this->syncDeny();
@@ -665,7 +666,8 @@ trait BotLogs
             }
         }
         $this->setPacConf($pac);
-        if (empty($fun)) {
+        // the message with the button; the cron's autoblock has none
+        if (empty($fun) && !empty($this->input['message_id'])) {
             $this->delete($this->input['from'], $this->input['message_id']);
         }
         $this->syncDeny();
