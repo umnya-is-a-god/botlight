@@ -716,6 +716,8 @@ class Bot
             // each step on its own: an error in one (even a TypeError) must
             // not stop the loop or the steps after it
             foreach ([
+                // first: scripts/update.sh waits for it
+                'hostBackup',
                 'checkVersion',
                 'checkBackup',
                 'rotateLogs',

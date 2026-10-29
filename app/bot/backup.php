@@ -163,16 +163,39 @@ trait BotBackup
     }
 
     // the encrypted backup to the main admin
-    public function sendBackup()
+    // true when the backup reached the main admin
+    public function sendBackup(): bool
     {
         $c = $this->config();
         if (!$this->backupKey()) {
             $this->send($c['admin'][0], 'backup not sent: set a backup password in Settings, backups are only sent encrypted');
-            return;
+            return false;
         }
         $json = $this->export();
         $bot = preg_replace('~[\W]~iu', '_', $this->request('getMyName', [])['result']['name']);
-        $this->sendFile($c['admin'][0], new CURLStringFile($this->encryptBackup($json), "{$bot}_backup_" . date('d_m_Y_H_i') . '.enc.json', 'application/json'));
+        $r = $this->sendFile($c['admin'][0], new CURLStringFile($this->encryptBackup($json), "{$bot}_backup_" . date('d_m_Y_H_i') . '.enc.json', 'application/json'));
+        return !empty($r['ok']);
+    }
+
+    /**
+     * scripts/update.sh asks for a backup ("request" in ./update/backup)
+     * before it stops the bot for an update or new images, only when there
+     * is something to install. The answer goes back in the same file:
+     * sent, no password or failed.
+     */
+    public function hostBackup()
+    {
+        if (trim((string) @file_get_contents('/update/backup')) !== 'request') {
+            return;
+        }
+        bot_write('/update/backup', 'busy');
+        try {
+            $answer = $this->sendBackup() ? 'sent' : ($this->backupKey() ? 'failed' : 'no password');
+        } catch (Throwable $e) {
+            error_log("hostBackup: $e");
+            $answer = 'failed';
+        }
+        bot_write('/update/backup', $answer);
     }
 
     public function backupPassword()

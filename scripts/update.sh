@@ -20,6 +20,7 @@ for pid in $(pgrep -f "$process_name"); do
 done
 
 : > "$pwd/update/pipe"
+: > "$pwd/update/backup"
 # pid lives outside ./update: that folder is writable from the containers
 echo "$$" > "$pwd/.update_pid"
 last_fetch=0
@@ -49,6 +50,31 @@ tg() {
     printf 'url = "https://%s/bot%s/%s"\n' "$TELEGRAM_API" "$_key" "$method" > "$cfg"
     printf '%s' "$json" | curl -s -K "$cfg" -H "Content-Type: application/json" -X POST --data-binary @- > /dev/null
     rm -f "$cfg"
+}
+
+# a backup from the bot before anything stops, only when there is
+# something to install: the bot's cron (service container, every 10 s)
+# sends it to the main admin and answers in ./update/backup (Bot::hostBackup);
+# no answer in 2 minutes: the update goes on, the report says so
+request_backup() {
+    local i answer=""
+    tg_draft "sending a backup"
+    printf 'request' > "$pwd/update/backup"
+    for i in $(seq 1 120); do
+        answer=$(tr -d '\r\n' < "$pwd/update/backup" 2> /dev/null)
+        case "$answer" in
+            sent|'no password'|failed) break ;;
+        esac
+        answer=""
+        sleep 1
+    done
+    : > "$pwd/update/backup"
+    case "$answer" in
+        sent) backup_note="\nbackup: sent" ;;
+        'no password') backup_note="\nbackup: not sent, no backup password" ;;
+        failed) backup_note="\nbackup: FAILED to send" ;;
+        *) backup_note="\nbackup: no answer from the bot" ;;
+    esac
 }
 
 # done: the token forgotten, and the bot asked to show the admin the menu
@@ -244,6 +270,7 @@ do
         _chat_id=${_chat_id:-0}
         : > "$pwd/update/pipe"
         : > "$pwd/update/target"
+        backup_note=""
 
         if [[ "$cmd" == "1" ]]
         then
@@ -257,6 +284,7 @@ do
                 back_to_menu
                 continue
             fi
+            request_backup
         fi
 
         report=""
@@ -275,6 +303,7 @@ do
                 back_to_menu
                 continue
             fi
+            request_backup
         fi
 
         tg_draft "stopping the bot"
@@ -305,7 +334,7 @@ do
             bash "$pwd/scripts/images.sh" prune
         fi
 
-        tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "$(printf '%b' "bot started$report")")}"
+        tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "$(printf '%b' "bot started$report$backup_note")")}"
         back_to_menu
 
         bash "$pwd/scripts/update.sh" &

@@ -198,7 +198,7 @@ trait BotUpdate
             if ($fetched) {
                 $text .= "\n(as of " . date('Y-m-d H:i', $fetched) . '; the update itself takes the latest)';
             }
-            $text .= "\n\nThe bot and the VPN stop for the update (a minute or more). Settings in ./data are kept.";
+            $text .= "\n\nThe bot and the VPN stop for the update (a minute or more). Settings in ./data are kept; if there is something new, a backup is sent before the stop.";
             return $this->update($this->input['chat'], $this->input['message_id'], $text, [
                 [['text' => $this->i18n('update bot'), 'callback_data' => '/applyupdatebot yes']],
                 [['text' => $this->i18n('back'), 'callback_data' => '/menu update']],
@@ -263,7 +263,7 @@ trait BotUpdate
             . "The new ones are downloaded while the VPN keeps working, then the containers restart (about a minute). "
             . "If they are not all running and healthy within 5 minutes, the previous images come back by themselves. "
             . "If GitHub cannot be reached, the images are built here instead: several minutes, the VPN is off meanwhile. "
-            . "Settings and data are kept; a backup is sent first.",
+            . "Settings and data are kept; if there are new images, a backup is sent before the restart.",
             [
                 [['text' => $this->i18n('update images'), 'callback_data' => '/rebuildYes']],
                 [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
@@ -277,7 +277,6 @@ trait BotUpdate
             return;
         }
         $this->xrayStatsUser(true);
-        $this->sendBackup();
         $this->hostCommand('3', 'update images...');
     }
 
