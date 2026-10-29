@@ -63,43 +63,39 @@ switch ($route) {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <link href="$base/jsoneditor.min.css" rel="stylesheet" type="text/css">
                 <script src="$base/jsoneditor.min.js"></script>
-                <script src="$base/jquery-3.7.1.min.js"></script>
                 <script src="https://telegram.org/js/telegram-web-app.js"></script>
             </head>
             <body style="height:100%">
                 <div id="jsoneditor" style="height:100%"></div>
                 <script>
-                    jQuery(function($) {
-                        var tg = window.Telegram.WebApp;
-                        var name = $name, type = $tyjs;
-                        const editor = new JSONEditor(document.getElementById("jsoneditor"), {});
-                        // the template is only sent to an admin's signed Telegram session
-                        $.ajax({
-                            url: '$base/load',
-                            method: 'POST',
-                            data: {initData: tg.initData, name: name, type: type},
-                            dataType: 'json'
-                        }).done(function (t) {
-                            editor.set(t);
-                        }).fail(function () {
-                            document.getElementById("jsoneditor").textContent = 'access denied';
+                    var tg = window.Telegram.WebApp;
+                    var name = $name, type = $tyjs;
+                    // a form POST to this page's server, the reply as JSON; an error status fails
+                    function post(url, data) {
+                        return fetch(url, {method: 'POST', body: new URLSearchParams(data)}).then(function (r) {
+                            if (!r.ok) {
+                                throw r;
+                            }
+                            return r.json();
                         });
-                        tg.MainButton.show().setText($save).onClick(function () {
-                            $.ajax({
-                                url: '$base/save',
-                                method: 'POST',
-                                data: {initData: tg.initData, name: name, type: type, json: editor.getText()},
-                                dataType: 'json'
-                            }).done(function (r) {
-                                if (r.status == true) {
-                                    tg.MainButton.setText($ok);
-                                    setTimeout(() => { tg.close(); }, 500);
-                                } else {
-                                    tg.MainButton.setText(r.message);
-                                }
-                            }).fail(function () {
-                                tg.MainButton.setText($err);
-                            });
+                    }
+                    const editor = new JSONEditor(document.getElementById("jsoneditor"), {});
+                    // the template is only sent to an admin's signed Telegram session
+                    post('$base/load', {initData: tg.initData, name: name, type: type}).then(function (t) {
+                        editor.set(t);
+                    }).catch(function () {
+                        document.getElementById("jsoneditor").textContent = 'access denied';
+                    });
+                    tg.MainButton.show().setText($save).onClick(function () {
+                        post('$base/save', {initData: tg.initData, name: name, type: type, json: editor.getText()}).then(function (r) {
+                            if (r.status == true) {
+                                tg.MainButton.setText($ok);
+                                setTimeout(() => { tg.close(); }, 500);
+                            } else {
+                                tg.MainButton.setText(r.message);
+                            }
+                        }).catch(function () {
+                            tg.MainButton.setText($err);
                         });
                     });
                 </script>
@@ -148,7 +144,6 @@ switch ($route) {
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <script src="$base/jquery-3.7.1.min.js"></script>
                 <script src="https://telegram.org/js/telegram-web-app.js"></script>
                 <style>
                     body { font-family: sans-serif; margin: 16px; color: var(--tg-theme-text-color, #000); background: var(--tg-theme-bg-color, #fff); }
@@ -162,39 +157,50 @@ switch ($route) {
                 <h3 id="title"></h3>
                 <div id="list">...</div>
                 <script>
-                    jQuery(function($) {
-                        var tg = window.Telegram.WebApp;
-                        $('#title').text($title);
-                        var q = new URLSearchParams(location.search);
-                        $.ajax({
-                            url: '$base/secrets/data',
-                            method: 'POST',
-                            data: {initData: tg.initData, s: q.get('s') || ''},
-                            dataType: 'json'
-                        }).done(function (r) {
-                            var list = $('#list').empty();
-                            r.items.forEach(function (e) {
-                                var v = $('<div class="value">').text(e[1] || '—');
-                                var item = $('<div class="item">').append($('<div class="label">').text(e[0]), v);
-                                if (e[1] && navigator.clipboard) {
-                                    item.append($('<button>').text('copy').on('click', function () {
-                                        navigator.clipboard.writeText(e[1]);
-                                    }));
-                                }
-                                list.append(item);
-                            });
-                            if (r.warp_profile) {
-                                list.append($('<button>').text('download WARP profile').on('click', function () {
-                                    if (tg.downloadFile) {
-                                        tg.downloadFile({url: r.warp_profile, file_name: 'warp.conf'});
-                                    } else {
-                                        location.href = r.warp_profile;
-                                    }
+                    var tg = window.Telegram.WebApp;
+                    var list = document.getElementById('list');
+                    document.getElementById('title').textContent = $title;
+                    var q = new URLSearchParams(location.search);
+                    // an element with its text (never parsed as HTML)
+                    function el(tag, cls, text) {
+                        var e = document.createElement(tag);
+                        e.className = cls;
+                        e.textContent = text;
+                        return e;
+                    }
+                    function button(text, click) {
+                        var b = el('button', '', text);
+                        b.addEventListener('click', click);
+                        return b;
+                    }
+                    fetch('$base/secrets/data', {method: 'POST', body: new URLSearchParams({initData: tg.initData, s: q.get('s') || ''})}).then(function (r) {
+                        if (!r.ok) {
+                            throw r;
+                        }
+                        return r.json();
+                    }).then(function (r) {
+                        list.textContent = '';
+                        r.items.forEach(function (e) {
+                            var item = el('div', 'item', '');
+                            item.append(el('div', 'label', e[0]), el('div', 'value', e[1] || '—'));
+                            if (e[1] && navigator.clipboard) {
+                                item.append(button('copy', function () {
+                                    navigator.clipboard.writeText(e[1]);
                                 }));
                             }
-                        }).fail(function () {
-                            $('#list').text('access denied');
+                            list.append(item);
                         });
+                        if (r.warp_profile) {
+                            list.append(button('download WARP profile', function () {
+                                if (tg.downloadFile) {
+                                    tg.downloadFile({url: r.warp_profile, file_name: 'warp.conf'});
+                                } else {
+                                    location.href = r.warp_profile;
+                                }
+                            }));
+                        }
+                    }).catch(function () {
+                        list.textContent = 'access denied';
                     });
                 </script>
             </body>

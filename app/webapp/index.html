@@ -4,24 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="jquery-3.7.1.min.js"></script>
     <title>Document</title>
 </head>
 <body>
     <script>
         var tg = window.Telegram.WebApp;
-        jQuery(function($) {
-            // the Telegram sign-in goes in the body, never in the URL
-            $.ajax({
-                'url': 'check',
-                'method': 'POST',
-                'data': {initData: tg.initData},
-            }).done(function (r) {
-                location.replace(r);
-            }).fail(function (r) {
+        // the Telegram sign-in goes in the body, never in the URL
+        fetch('check', {method: 'POST', body: new URLSearchParams({initData: tg.initData})})
+            .then(function (r) {
+                if (!r.ok) {
+                    throw r;
+                }
+                return r.text();
+            })
+            .then(function (url) {
+                // the AdGuard panel of this server only
+                if (!url.startsWith('/adguard')) {
+                    throw url;
+                }
+                location.replace(url);
+            })
+            .catch(function () {
                 document.body.textContent = 'access denied';
             });
-        });
     </script>
 </body>
 </html>
