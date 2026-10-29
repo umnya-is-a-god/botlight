@@ -1,5 +1,5 @@
-# a fixed release: the bot's AdGuard settings are checked against it
-FROM adguard/adguardhome:v0.107.79
+# the latest release on every build (make rebuild pulls it)
+FROM adguard/adguardhome
 LABEL org.botlight.project=vpnbot
 # security updates of the base image's packages (ca-certificates, openssl, ...)
 # on every build, not only what the base image was pulled with

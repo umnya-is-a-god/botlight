@@ -1,5 +1,5 @@
 ARG image
-FROM golang:1.27.3-alpine3.24 AS go
+FROM golang:alpine AS go
 # a fixed release; the Go checksum database (sum.golang.org) verifies the
 # module and all its dependencies during the download
 ARG dnstt_version=v1.20260501.0

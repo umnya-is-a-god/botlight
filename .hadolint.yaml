@@ -10,3 +10,6 @@ ignored:
   - DL3047
   # the pipes in RUN end in checks of their own (sha256sum -c, [ ... ])
   - DL4006
+  # AdGuard Home without a version tag on purpose: every build takes its
+  # latest release
+  - DL3006
