@@ -10,8 +10,6 @@ ARG singbox_version=1.14.3
 # the -musl build: the plain linux-amd64 one is linked against glibc and
 # does not run on Alpine
 ARG singbox_sha256=41fc81fd041134d4d7d850a928d7d2cde17a7d6563953f406b22d32a68bfab1f
-ARG mihomo_version=1.19.32
-ARG mihomo_sha256=8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10
 # security updates of the base image's packages (ca-certificates, openssl, ...)
 # on every build, not only what the base image was pulled with.
 # botweb/botadmin: users of the web pools (system/php-fpm.conf); their ids
@@ -57,10 +55,6 @@ RUN apk upgrade --no-cache \
     && echo "$singbox_sha256  sing-box.tar.gz" | sha256sum -c - \
     && tar -xf sing-box.tar.gz \
     && mv sing-box-$singbox_version-linux-amd64-musl/sing-box /usr/bin/ \
-    && wget -O mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v$mihomo_version/mihomo-linux-amd64-v$mihomo_version.gz \
-    && echo "$mihomo_sha256  mihomo.gz" | sha256sum -c - \
-    && gunzip mihomo.gz \
-    && mv mihomo /usr/bin/mihomo \
-    && chmod +x /usr/bin/mihomo /usr/bin/dnslookup /usr/bin/sing-box \
+    && chmod +x /usr/bin/dnslookup /usr/bin/sing-box \
     && cd / && rm -rf /tmp/dl \
-    && sing-box version && mihomo -v && dnslookup --version
+    && sing-box version && dnslookup --version
