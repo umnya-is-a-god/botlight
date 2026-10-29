@@ -185,20 +185,50 @@ trait BotUpdate
         $this->hostCommand('2', 'restart...');
     }
 
+    /**
+     * The images the registry has newer versions of: scripts/images.sh
+     * check, run daily on the host, leaves them in ./update/images.
+     */
+    public function newImages(): array
+    {
+        $s = trim((string) @file_get_contents('/update/images'));
+        return array_values(array_filter(explode(' ', $s), fn($e) => (bool) preg_match('~^[a-z]{2,8}$~D', $e)));
+    }
+
+    // cron: the main admin is told once about each new set of images
+    public function checkImages()
+    {
+        $new = implode(' ', $this->newImages());
+        $this->updateState(function ($st) use ($new) {
+            if ($new !== '' && ($st['images_notified'] ?? '') !== $new) {
+                $admin = (int) ($this->config()['admin'][0] ?? 0);
+                if ($admin) {
+                    $this->send($admin, "new images on GitHub: $new\nSettings -> " . $this->i18n('update images'));
+                }
+            }
+            $st['images_notified'] = $new;
+            return $st;
+        });
+    }
+
     public function rebuildMenu()
     {
         if (!$this->mainAdminOnly()) {
             return;
         }
+        $new = $this->newImages();
         $this->update(
             $this->input['chat'],
             $this->input['message_id'],
-            $this->i18n('Menu') . ' -> ' . $this->i18n('config') . ' -> ' . $this->i18n('rebuild images') . "\n\n"
-            . "Every image is built anew, one at a time: fresh base images (Alpine, AdGuard Home) and package updates (PHP, OpenSSL, certificates). "
-            . "All containers are stopped first: the bot and the VPN are off until the build ends, several minutes or more. "
-            . "Settings and data are kept; a backup is sent first. The new images need free disk space.",
+            $this->i18n('Menu') . ' -> ' . $this->i18n('config') . ' -> ' . $this->i18n('update images') . "\n\n"
+            . ($new ? 'New on GitHub: ' . implode(', ', $new) . "\n\n" : "No new images found on the last daily check.\n\n")
+            . "The images are built and checked on GitHub every week (fresh Alpine, AdGuard Home, Xray). "
+            . "The new ones are downloaded while the VPN keeps working, then the containers restart (about a minute). "
+            . "If they are not all running and healthy within 5 minutes, the previous images come back by themselves. "
+            . "If GitHub cannot be reached, the images are built here instead: several minutes, the VPN is off meanwhile. "
+            . "Settings and data are kept; a backup is sent first.",
             [
-                [['text' => $this->i18n('rebuild images'), 'callback_data' => '/rebuildYes']],
+                [['text' => $this->i18n('update images'), 'callback_data' => '/rebuildYes']],
                 [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
             ],
         );
@@ -211,11 +241,11 @@ trait BotUpdate
         }
         $this->xrayStatsUser(true);
         $this->sendBackup();
-        $this->hostCommand('3', 'rebuild images...');
+        $this->hostCommand('3', 'update images...');
     }
 
     // hands a command to scripts/update.sh on the host: 1 update, 2 restart,
-    // 3 rebuild images
+    // 3 new images
     public function hostCommand($cmd, $draft)
     {
         $r = $this->sendDraft($this->input['from'], 1, $draft);

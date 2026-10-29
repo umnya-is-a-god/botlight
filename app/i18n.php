@@ -241,6 +241,10 @@ $i = [
         'en' => 'manage updates',
         'ru' => 'обновления',
     ],
+    'update images'  => [
+        'en' => 'update images',
+        'ru' => 'обновить образы',
+    ],
     'rebuild images'  => [
         'en' => 'rebuild images',
         'ru' => 'пересобрать образы',

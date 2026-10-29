@@ -554,7 +554,8 @@ trait BotMenu
                 'callback_data' => "/restart",
             ],
             [
-                'text'          => $this->i18n('rebuild images'),
+                // new images on GitHub (scripts/images.sh check): how many
+                'text'          => $this->i18n('update images') . (($n = count($this->newImages())) ? " 🆕 $n" : ''),
                 'callback_data' => "/rebuild",
             ],
         ];

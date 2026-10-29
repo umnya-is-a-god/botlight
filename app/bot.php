@@ -727,6 +727,7 @@ class Bot
                 'xrayStatsUser',
                 'ocTraffic',
                 'statusCache',
+                'checkImages',
                 'checkWarpStatus',
             ] as $step) {
                 try {
