@@ -70,7 +70,8 @@ trait BotAdmin
         }
         // an admin can do almost everything: confirmed first
         $_SESSION['add_admin'] = [(int) $m[1], $m[2]];
-        $this->send($this->input['chat'], $this->i18n('add') . ' ' . $this->i18n('admin') . ': <code>' . (int) $m[1] . '</code> ' . htmlspecialchars($m[2]) . "?\nAn admin manages the whole server: users, keys, settings.", button: [
+        // in place of the Settings menu (reply() put its message here)
+        $this->update($this->input['chat'], $this->input['message_id'], $this->i18n('add') . ' ' . $this->i18n('admin') . ': <code>' . (int) $m[1] . '</code> ' . htmlspecialchars($m[2]) . "?\nAn admin manages the whole server: users, keys, settings.", [
             [['text' => $this->i18n('yes'), 'callback_data' => '/addAdminYes ' . (int) $m[1]]],
             [['text' => $this->i18n('back'), 'callback_data' => '/menu config']],
         ]);

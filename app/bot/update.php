@@ -244,6 +244,26 @@ trait BotUpdate
         $this->hostCommand('3', 'update images...');
     }
 
+    /**
+     * scripts/update.sh is done (update, restart, images): the menu the
+     * admin started from, as a new message under its report. It leaves
+     * "chat:menu" in ./update/menu; read once, for an admin only.
+     */
+    public function menuAfterHost()
+    {
+        $s = trim((string) @file_get_contents('/update/menu'));
+        if ($s === '') {
+            return;
+        }
+        bot_write('/update/menu', '');
+        if (!preg_match('~^(-?\d{1,20}):(config|update)$~D', $s, $m)
+            || !in_array((int) $m[1], array_map('intval', $this->config()['admin'] ?? []), true)) {
+            return;
+        }
+        $this->input = ['chat' => (int) $m[1], 'from' => (int) $m[1], 'message_id' => null, 'callback_id' => false, 'callback' => false, 'message' => '', 'username' => ''];
+        $this->menu($m[2]);
+    }
+
     // hands a command to scripts/update.sh on the host: 1 update, 2 restart,
     // 3 new images
     public function hostCommand($cmd, $draft)

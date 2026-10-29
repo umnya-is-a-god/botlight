@@ -51,6 +51,17 @@ tg() {
     rm -f "$cfg"
 }
 
+# done: the token forgotten, and the bot asked to show the admin the menu
+# the command came from again (Bot::menuAfterHost reads ./update/menu)
+back_to_menu() {
+    local menu=config
+    [ "$cmd" = 1 ] && menu=update
+    : > "$pwd/update/key"
+    : > "$pwd/update/curl"
+    _key=""
+    printf '%s:%s' "$_chat_id" "$menu" > "$pwd/update/menu"
+}
+
 json_str() {
     local s="$1"
     s=${s//\\/\\\\}
@@ -82,7 +93,8 @@ verify_tag() {
 }
 
 # Before anything stops: fetch, check the signature of a tag and that the
-# code can move forward. Prints the ref to merge, or why not (non-zero).
+# code can move forward. Prints the ref to merge, or why not: 1 not
+# possible, 2 nothing new (the bot is not stopped for it).
 check_update() {
     local branch="$1" target="$2" ref out
     if ! out=$(git fetch -q --tags origin 2>&1); then
@@ -114,6 +126,10 @@ check_update() {
             ref='@{u}'
             ;;
     esac
+    if [ "$(git rev-parse -q --verify HEAD)" = "$(git rev-parse -q --verify "$ref^{commit}")" ]; then
+        echo "no new commits, nothing was restarted"
+        return 2
+    fi
     if ! git merge-base --is-ancestor HEAD "$ref" 2> /dev/null; then
         echo "not updated: the local branch differs from origin (no fast-forward); to replace it on the host: git reset --hard origin/<branch> (the settings in ./data stay)"
         return 1
@@ -206,12 +222,13 @@ do
         if [[ "$cmd" == "1" ]]
         then
             tg_draft "downloading the update"
-            if ! ref=$(check_update "$branch" "$target" 2>&1); then
+            ref=$(check_update "$branch" "$target" 2>&1)
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
                 # nothing was stopped: the bot keeps running as it was
-                tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "update not installed: $ref")}"
-                : > "$pwd/update/key"
-                : > "$pwd/update/curl"
-                _key=""
+                [ "$rc" -eq 2 ] || ref="update not installed: $ref"
+                tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "$ref")}"
+                back_to_menu
                 continue
             fi
         fi
@@ -229,9 +246,7 @@ do
                 # nothing new: no restart
                 : > "$pwd/update/images"
                 tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "the images are up to date, nothing was restarted")}"
-                : > "$pwd/update/key"
-                : > "$pwd/update/curl"
-                _key=""
+                back_to_menu
                 continue
             fi
         fi
@@ -264,11 +279,8 @@ do
             bash "$pwd/scripts/images.sh" prune
         fi
 
-        : > "$pwd/update/key"
-        : > "$pwd/update/curl"
-
         tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "$(printf '%b' "bot started$report")")}"
-        _key=""
+        back_to_menu
 
         bash "$pwd/scripts/update.sh" &
         exit 0

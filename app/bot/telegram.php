@@ -119,6 +119,7 @@ trait BotTelegram
         // the loop is alive: healthcheck and scripts/supervise.sh read it
         @touch('/tmp/heartbeat');
         $this->deleteDue();
+        $this->menuAfterHost();
         if (empty($this->time_warp_profile) || time() - $this->time_warp_profile > 600) {
             $this->time_warp_profile = time();
             $this->syncWarpProfile();
@@ -225,10 +226,12 @@ trait BotTelegram
                     'text'   => $v,
                 ];
             }
-            $i = 0;
+            $i      = 0;
+            $output = [];
             foreach ($lines as $v) {
                 $i += $v['length'];
-                $output[ceil($i / $size)] .= $v['text'] . "\n";
+                $k  = (int) ceil($i / $size);
+                $output[$k] = ($output[$k] ?? '') . $v['text'] . "\n";
             }
             return array_values($output);
         } else {
