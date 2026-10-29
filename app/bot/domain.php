@@ -216,8 +216,8 @@ trait BotDomain
         if (!$domains) {
             return false;
         }
-        $email = (string) getenv('LE_EMAIL');
-        $email = filter_var($email, FILTER_VALIDATE_EMAIL) ? '--email ' . escapeshellarg($email) : '--register-unsafely-without-email';
+        // no email: not needed to get or renew the certificate
+        $email = '--register-unsafely-without-email';
         $args  = implode(' ', array_map(fn($e) => '-d ' . escapeshellarg($e), $domains));
         @mkdir('/acme', 0755);
         exec('certbot certonly --cert-name ' . escapeshellarg($domains[0]) . ' --expand --renew-with-new-domains ' . ($force ? '--force-renewal ' : '')
