@@ -319,51 +319,7 @@ trait BotSubscription
         return ($c['domain'] ?? null) ?: $this->ip;
     }
 
-    public function sub()
-    {
-        $xr     = $this->getXray();
-        $pac    = $this->getPacConf();
-        $st     = $this->getXrayStats();
-        $domain = $this->requestDomain($pac);
-        $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
-        $hash   = $this->getHashBot();
-        $flag   = true;
-        $client = null;
-        $id = is_string($_GET['id'] ?? null) ? $_GET['id'] : '';
-        foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
-            if ($id !== '' && hash_equals((string) $v['id'], $id)) {
-                if (empty($v['off'])) {
-                    $flag = false;
-                }
-                $uid    = $v['id'];
-                $email  = $v['email'];
-                $expire = $v['time'];
-                $client = $v;
-                break;
-            }
-        }
-        if ($flag) {
-            header('404', true, 404);
-            exit;
-        }
-        $suburl   = "<a href='$scheme://{$domain}/pac$hash/sub?id={$uid}'>subscription</a>";
-        [$download, $upload] = array_map([$this, 'getBytes'], $this->userTraffic($st, $client ?? []));
-        $singbox  = $this->subLink($scheme, $domain, 'si', $uid);
-        $clash = $this->subLink($scheme, $domain, 'cl', $uid);
-        $vless   = $this->linkXray($k);
-        $_GET['s'] = $uid;
-        foreach ([
-          'singbox' => 'si',
-          'clash'   => 'cl'
-        ] as $k     => $v) {
-            $_GET['t'] = $v;
-            $configs[$k] = $this->subscription(1);
-        }
-        // the admin's own page, app/subscription.php
-        require dirname(__DIR__) . '/subscription.php';
-    }
-
-    public function subscription($return = false)
+    public function subscription()
     {
         switch ($_GET['t']) {
             case 'si':
@@ -609,13 +565,6 @@ trait BotSubscription
                 }
                 break;
         }
-        if (!empty($return)) {
-            if (($_GET['t'] ?? null) == 'cl') {
-                return yaml_emit($c);
-            }
-            return json_encode($c);
-        }
-
         if (($_GET['t'] ?? null) == 'cl') {
             header('Content-type: text/yaml');
             echo yaml_emit($c);

@@ -26,7 +26,6 @@ docker-compose.override.yml
 backup.json
 app/webapp/override/
 
-subscription.php
 location.conf
 override.conf
 i18n.override.php

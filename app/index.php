@@ -47,10 +47,6 @@ function sub_params(string $part): array
 
 $hash = $bot->getHashBot();
 switch (true) {
-    case str_starts_with($path, "/pac$hash/sub") && file_exists(__DIR__ . '/subscription.php'):
-        $bot->sub();
-        exit;
-
     // subs & pac
     case $path === "/pac$hash" || str_starts_with($path, "/pac$hash/"):
         foreach (sub_params(explode('/', $path)[2] ?? '') as $k => $v) {
