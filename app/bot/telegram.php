@@ -116,7 +116,10 @@ trait BotTelegram
             // method and Telegram's answer only: the request itself may carry
             // links, keys or backups
             $why = $res === false ? 'curl: ' . curl_error($ch) : (is_array($r) ? ($r['error_code'] ?? '') . ' ' . ($r['description'] ?? '') : substr((string) $res, 0, 200));
-            file_put_contents('/logs/requests_error', date('Y-m-d H:i:s ') . "$method: $why\n", FILE_APPEND);
+            // where it came from: the script and the functions (names only, no arguments)
+            $from = array_reverse(array_column(array_slice(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 12), 1), 'function'));
+            $from = basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) . ': ' . implode(' > ', $from);
+            file_put_contents('/logs/requests_error', date('Y-m-d H:i:s ') . "$method: $why [$from]\n", FILE_APPEND);
         }
         return $r;
     }
