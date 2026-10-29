@@ -112,20 +112,9 @@ trait BotMenu
 
             if (!empty($conf['domain'])) {
                 $main[] = '';
-                $oc     = $this->getHashSubdomain('oc');
                 if (!empty($conf['domain'])) {
-                    $ssl_expiry = $this->expireCert();
-                    $certs      = $this->domainsCert() ?: [];
-
                     $main[] = "<blockquote>";
-                    $main[] = "Domains:";
-                    $main[] = $conf['domain'] . (in_array($conf['domain'], $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-                    if (!empty($oc)) {
-                        $main[] = 'openconnect ' . "$oc.{$conf['domain']}" . (in_array("$oc.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-                    }
-                    if (!empty($conf['adguardkey'])) {
-                        $main[] = "{$conf['adguardkey']}.{$conf['domain']}" . (in_array("{$conf['adguardkey']}.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '') . ' adguard DOT';
-                    }
+                    array_push($main, ...$this->domainLines());
                     $main[] = "</blockquote>";
                 } else {
                     $main[] = $this->i18n('domain explain');
@@ -403,18 +392,9 @@ trait BotMenu
     public function configMenu()
     {
         $conf = $this->getPacConf();
-        $oc   = $this->getHashSubdomain('oc');
         if (!empty($conf['domain'])) {
-            $ssl_expiry = $this->expireCert();
-            $certs      = $this->domainsCert() ?: [];
-
             $text[] = "<blockquote>";
-            $text[] = "Domains:";
-            $text[] = $conf['domain'] . (in_array($conf['domain'], $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-            $text[] = 'openconnect ' . "$oc.{$conf['domain']}" . (in_array("$oc.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '');
-            if (!empty($conf['adguardkey'])) {
-                $text[] = "{$conf['adguardkey']}.{$conf['domain']}" . (in_array("{$conf['adguardkey']}.{$conf['domain']}", $certs) ? ' (ssl: ' . date('Y-m-d H:i:s', $ssl_expiry) . ')' : '') . ' adguard DOT';
-            }
+            array_push($text, ...$this->domainLines());
             $text[] = "</blockquote>";
         } else {
             $text[] = $this->i18n('domain explain');

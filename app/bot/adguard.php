@@ -72,20 +72,32 @@ trait BotAdguard
 
     public function setAdguardKey()
     {
-        $this->prompt($this->i18n('enter key'), $this->i18n('enter key'), 'setAdKey');
+        $this->prompt('ClientID: a-z, 0-9 and - inside, up to 63; <code>-</code> deletes it', $this->i18n('enter key'), 'setAdKey');
     }
-
 
     public function setAdKey($key)
     {
-        // used as a subdomain (DoT client id) in nginx/certbot/AdGuard configs
-        if (!preg_match('~^[a-z0-9-]{1,63}$~D', $key = strtolower(trim((string) $key)))) {
-            $this->send($this->input['chat'], 'wrong key: a-z, 0-9, -');
+        $key = strtolower(trim((string) $key));
+        $c   = $this->getPacConf();
+        if ($key === '-') {
+            // DoH/DoT without a ClientID again; the certificate keeps the
+            // name until it is renewed, which does no harm
+            unset($c['adguardkey']);
+            $this->setPacConf($c);
+            $this->adguardSync();
+            $this->menu('adguard');
             return;
         }
-        $c = $this->getPacConf();
+        // a DNS label: it is the DoT name's subdomain and goes into the
+        // certificate and the AdGuard config
+        if (!preg_match('~^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$~D', $key)) {
+            $this->send($this->input['chat'], 'wrong ClientID: a-z, 0-9 and - inside, up to 63; - deletes it');
+            return;
+        }
         $c['adguardkey'] = $key;
         $this->setPacConf($c);
+        // AdGuard's allowed clients take the new ClientID now, not at the next restart
+        $this->adguardSync();
         // the DoT name is in the certificate: a new one with it
         if (($c['letsencrypt'] ?? '') === 'letsencrypt') {
             $this->certTask(false);

@@ -262,6 +262,21 @@ trait BotDomain
         $t = $this->certTimes();
         if (empty($t['to']) || empty($t['from']) || $t['to'] - time() < ($t['to'] - $t['from']) / 3) {
             $this->certTask(true, (int) ($this->config()['admin'][0] ?? 0));
+            return;
+        }
+        // a name the certificate lacks (a ClientID from a restored backup,
+        // a failed request): one new certificate per set of names, so a
+        // name certbot cannot get is not retried every day (renew SSL can)
+        $names   = $this->certDomains();
+        $certs   = $this->domainsCert() ?: [];
+        $missing = array_filter($names, fn($e) => !$this->certCovers($e, $certs));
+        $key     = implode(' ', $names);
+        if ($missing && ($this->getState()['cert_names_tried'] ?? '') !== $key) {
+            $this->updateState(function ($st) use ($key) {
+                $st['cert_names_tried'] = $key;
+                return $st;
+            });
+            $this->certTask(false, (int) ($this->config()['admin'][0] ?? 0));
         }
     }
 
@@ -487,6 +502,37 @@ trait BotDomain
     public function expireCert()
     {
         return $this->certTimes()['to'] ?? false;
+    }
+
+    /**
+     * The domain lines of the menus: the bot's names with their
+     * certificate's expiry, or a note when the installed certificate does
+     * not cover the name (Settings -> renew SSL gets one with it)
+     */
+    public function domainLines(): array
+    {
+        $conf  = $this->getPacConf();
+        $oc    = $this->getHashSubdomain('oc');
+        $certs = $this->domainsCert() ?: [];
+        $to    = (int) $this->expireCert();
+        $note  = fn($name) => $this->certCovers($name, $certs)
+            ? ' (ssl: ' . date('Y-m-d H:i:s', $to) . ')'
+            : ($certs ? ' (not in the certificate)' : '');
+        $lines = ['Domains:', $conf['domain'] . $note($conf['domain'])];
+        if (!empty($oc)) {
+            $lines[] = "openconnect $oc.{$conf['domain']}" . $note("$oc.{$conf['domain']}");
+        }
+        if (!empty($conf['adguardkey'])) {
+            $lines[] = "{$conf['adguardkey']}.{$conf['domain']}" . $note("{$conf['adguardkey']}.{$conf['domain']}") . ' adguard DOT';
+        }
+        return $lines;
+    }
+
+    // a name the certificate's names cover: itself, or a wildcard one level up
+    public function certCovers(string $name, array $certs): bool
+    {
+        $parent = substr($name, strpos($name, '.') + 1);
+        return in_array($name, $certs, true) || in_array("*.$parent", $certs, true);
     }
 
     public function domainsCert()
