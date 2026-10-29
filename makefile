@@ -8,7 +8,7 @@ IMAGE_TAG := $(or $(IMAGE_TAG),$(shell bash ./scripts/images.sh tag))
 _ := $(shell touch ./docker-compose.override.yml ./docker-compose.ports.yml)
 
 b:
-	XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose build
+	docker compose build
 preup:
 	bash $(CURDIR)/scripts/update.sh &
 start: # запуск контейнеров
@@ -26,7 +26,7 @@ images: # новые образы из GitHub (без них — сборка з
 	VER=$(shell cat VERSION) bash ./scripts/images.sh update
 rebuild: # пересборка образов заново, по одному: свежие базовые образы и пакеты (S=сервис — только его)
 	for s in $(or $(S),ng php ad xr oc wp dnstt); do \
-		VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || exit 1; \
+		VER=$(shell cat VERSION) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || exit 1; \
 	done
 d: # остановка контейнеров
 	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null

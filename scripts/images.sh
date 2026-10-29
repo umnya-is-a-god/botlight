@@ -34,9 +34,10 @@ name() { echo "$IMAGES-$1:$IMAGE_TAG"; }
 
 compose() { docker compose --env-file ./.env --env-file ./override.env "$@"; }
 
-# built here from dockerfile/, under the same name
+# built here from dockerfile/, under the same name: anew, so the newest
+# packages and programs are taken, not the ones of an earlier build
 build() {
-    XRAY_VERSION=${XRAY_VERSION:-$(sh ./scripts/xray_version.sh)} compose build --pull "$1"
+    compose build --pull --no-cache "$1"
 }
 
 # the digest the registry has for an image (ghcr.io only), '' if unknown

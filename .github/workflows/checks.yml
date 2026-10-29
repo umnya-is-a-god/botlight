@@ -54,6 +54,8 @@ jobs:
         run: |
           bash tests/update_sh_test.sh
           bash tests/update_apply_test.sh
+      - name: release.sh
+        run: bash tests/release_test.sh
 
   docker:
     runs-on: ubuntu-24.04

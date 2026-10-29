@@ -1,7 +1,9 @@
 # The bot's images, built here instead of on the server and published to
 # GitHub's registry (ghcr.io/<owner>/botlight-<image>:<branch>): weekly for
 # fresh base images and programs (Alpine, AdGuard Home, Xray, Go), and when
-# a Dockerfile changes. An image is published only after its checks pass
+# a Dockerfile changes. The programs from GitHub releases (Xray, sing-box,
+# wgcf, dnslookup) are the newest at least 3 days old (scripts/release.sh).
+# An image is published only after its checks pass
 # (tests/images_smoke.sh). The server takes them when its admin presses
 # "update images" (scripts/images.sh), and builds them itself if it cannot.
 name: images
@@ -11,6 +13,7 @@ on:
     branches: [main, dev]
     paths:
       - dockerfile/**
+      - scripts/release.sh
       - tests/images_smoke.sh
       - .github/workflows/images.yml
   schedule:
@@ -40,6 +43,9 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
       - name: build
+        env:
+          # scripts/release.sh asks GitHub's API with it (a build secret, not kept in the image)
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           case "${{ matrix.image }}" in
               ng)    file=dockerfile/nginx.dockerfile;     ctx=dockerfile ;;
@@ -51,9 +57,9 @@ jobs:
               dnstt) file=dockerfile/dnstt.dockerfile;     ctx=. ;;
           esac
           base=$(sed -n 's/^IMAGE=//p' .env | tr -d '\r')
-          args=(--build-arg "image=$base")
+          args=(--build-arg "image=$base" --secret id=github_token,env=GITHUB_TOKEN)
           if [ "${{ matrix.image }}" = xr ]; then
-              args+=(--build-arg "xray_version=$(sh scripts/xray_version.sh)")
+              args+=(--build-arg "xray_version=$(sed -n 's/^XRAY_VERSION=//p' .env | tr -d '\r')")
           fi
           docker build --pull -f "$file" "${args[@]}" \
               --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
