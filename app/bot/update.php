@@ -356,7 +356,7 @@ trait BotUpdate
     {
         $p = $this->getPacConf();
         if (empty($p['autoupdate']) && !$this->signingKey()) {
-            return $this->answer($this->input['callback_id'], 'autoupdate needs the release signing key: put it into data/update-signing-key on the server (see HARDENING.md)', true);
+            return $this->answer($this->input['callback_id'], 'autoupdate needs the release signing key: put it into data/update-signing-key on the server (a GPG public key or an SSH allowed signers line)', true);
         }
         $p['autoupdate'] = empty($p['autoupdate']);
         $this->setPacConf($p);
