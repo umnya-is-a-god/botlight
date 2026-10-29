@@ -100,6 +100,8 @@ trait BotWarp
         $this->setSecret('warp', $key !== '' ? $key : null);
         $this->writeWarpKey();
         $this->syncWarpProfile();
+        // the menu shows the new account's exit, not the cached one
+        $this->checkWarpStatus(true);
 
         sleep(1);
         // sendMessageDraft closes only when sendMessage is called — send a dummy and delete it
@@ -114,26 +116,45 @@ trait BotWarp
     /**
      * The WARP check goes through the tunnel and takes seconds, so the cron
      * loop (service container) runs it once a minute and keeps the answer
-     * in a file; the main menu only reads it.
+     * in a file (status, then the exit: address · country (data centre));
+     * the menus only read it. One failed check is not enough for off: a
+     * request through WARP now and then takes longer than the timeout.
      */
-    public function checkWarpStatus($force = false, ?array $trace = null)
+    public function checkWarpStatus($force = false)
     {
         if ($force || empty($this->time_warp_status) || time() - $this->time_warp_status > 60) {
             $this->time_warp_status = time();
-            $f = '/logs/.warp_status';
-            file_put_contents("$f.tmp", $this->warpStatus($trace));
+            $f     = '/logs/.warp_status';
+            $trace = $this->warpTrace();
+            $st    = $this->warpStatus($trace);
+            if ($st === 'off' && !$force && ++$this->warp_fails < 2 && is_file($f)) {
+                // the previous answer stays, still fresh for cachedWarpStatus()
+                @touch($f);
+                return;
+            }
+            $this->warp_fails = 0;
+            $exit = $st === 'off' ? '' : ($trace['ip'] ?? '?') . ' · ' . ($trace['loc'] ?? '?') . ' (' . ($trace['colo'] ?? '?') . ')';
+            file_put_contents("$f.tmp", "$st\n$exit\n");
             rename("$f.tmp", $f);
         }
     }
 
-    public function cachedWarpStatus()
+    // [status, exit]; no answer for 3 minutes (cron stopped): treat as off
+    public function cachedWarp(): array
     {
-        // no answer for 3 minutes (cron stopped): treat as unknown/off
         $f = '/logs/.warp_status';
         if (is_file($f) && time() - filemtime($f) < 180) {
-            return trim(file_get_contents($f)) ?: 'off';
+            $l = explode("\n", (string) file_get_contents($f));
+            if (preg_match('~^\w+$~', trim($l[0]))) {
+                return [trim($l[0]), trim($l[1] ?? '')];
+            }
         }
-        return 'off';
+        return ['off', ''];
+    }
+
+    public function cachedWarpStatus()
+    {
+        return $this->cachedWarp()[0];
     }
 
     // on, plus (WARP+) or off, from warpTrace() (made now if not given)
@@ -165,14 +186,12 @@ trait BotWarp
     {
         $this->syncWarpProfile();
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('warp');
-        // checked now, the way Xray goes (the main menu's status is refreshed too)
-        $trace  = $this->warpTrace();
-        $this->checkWarpStatus(true, $trace);
-        $st     = $this->warpStatus($trace);
+        // from the cron check (checkWarpStatus): a check now takes seconds
+        [$st, $exit] = $this->cachedWarp();
         $text[] = 'status: ' . ($st === 'off' ? $this->i18n('off') . ' off' : $this->i18n('on') . ' ' . ($st === 'plus' ? 'WARP+' : 'on'));
-        if ($st !== 'off') {
+        if ($st !== 'off' && $exit !== '') {
             // where the traffic leaves WARP: address, country, Cloudflare data centre
-            $text[] = 'exit: ' . htmlspecialchars(($trace['ip'] ?? '?') . ' · ' . ($trace['loc'] ?? '?') . ' (' . ($trace['colo'] ?? '?') . ')');
+            $text[] = 'exit: ' . htmlspecialchars($exit);
         }
         $text[] = 'warp+ key: ' . ($this->secret('warp') !== '' ? $this->mask($this->secret('warp')) : $this->i18n('off'));
         $data[] = [

@@ -71,6 +71,8 @@ class Bot
     public $time3;
     public $time_xray_stats;
     public $time_warp_status;
+    // WARP checks failed in a row (cron)
+    public $warp_fails = 0;
     public $admin;
     public $ports;
     // true in the web pools (index.php): no bot token, read-only views
