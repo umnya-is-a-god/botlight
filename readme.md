@@ -101,8 +101,10 @@ Telegram-бот для своего VPN-сервера: облегчённая �
 Чистый сервер Debian/Ubuntu, от root. Бот ставится в `/root/vpnbot`, первый запуск — несколько минут (образы собираются на сервере).
 
 ```shell
-wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/init.sh | sh -s YOUR_TELEGRAM_BOT_KEY
+wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/init.sh | sh
 ```
+
+Скрипт спросит токен бота (ввод не отображается: в командной строке его видели бы другие процессы сервера). Без терминала токен берётся из переменной `BOT_TOKEN`. Другая ветка: `... | sh -s dev`.
 
 Сразу после установки напишите боту `/start`: админом становится первый, кто ему написал. Автозапуск после перезагрузки ставится сам (`make uncron` / `make cron` — выключить/включить).
 
