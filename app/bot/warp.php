@@ -25,8 +25,10 @@ trait BotWarp
      * the WARP+ license key if given ("+": the current key, "-": none). It
      * is all made in /etc/warp/new first: only when everything worked does
      * it replace the running profile, and if WireGuard does not come up
-     * with it, the previous profile goes back. The account file and the
-     * profile never go into the chat.
+     * with it, the previous profile goes back. The tunnel is down while
+     * wgcf talks to Cloudflare's API: through a tunnel that does not work
+     * the API does not answer either. The account file and the profile
+     * never go into the chat.
      */
     public function addWarpPlus($key)
     {
@@ -56,12 +58,20 @@ trait BotWarp
             $this->sendDraft($chat, 1, $log);
             return $ok;
         };
-        $fail = function () use ($chat, &$log) {
+        $up = 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl" >&2; exit $ec';
+        $fail = function () use ($chat, &$log, $step, $up) {
             $this->ssh('rm -rf /etc/warp/new', 'wp');
+            if (!$step('starting warp with the previous profile', 'ip link show wgcf-profile > /dev/null 2>&1 || [ ! -f /etc/warp/wgcf-profile.conf ] || { ' . $up . '; }')) {
+                return $this->send($chat, $log);
+            }
             $this->send($chat, $log . "\nnothing changed: WARP runs with the previous profile");
         };
 
         $d = '/etc/warp/new';
+        // wgcf goes to the API directly; clients going out through WARP wait meanwhile
+        if (!$step('stopping warp (clients through it wait)', 'wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; ! ip link show wgcf-profile > /dev/null 2>&1')) {
+            return $fail();
+        }
         if (!$step('registering a new WARP account', "rm -rf $d && mkdir -p $d && cd $d && wgcf register --accept-tos > /dev/null")) {
             return $fail();
         }
@@ -72,7 +82,6 @@ trait BotWarp
         if (!$step('generating the profile', "cd $d && wgcf generate > /dev/null && sh /scripts/warp_profile.sh wgcf-profile.conf")) {
             return $fail();
         }
-        $up = 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl" >&2; exit $ec';
         // up is not enough: Cloudflare must see the traffic come through WARP
         $works = 'for i in 1 2 3 4 5; do wgcf trace 2>/dev/null | grep -qE "^warp=(on|plus)$" && exit 0; sleep 2; done; echo "WARP does not answer through the new profile" >&2; exit 1';
         // the previous profile stays in old/ until the new one is up
