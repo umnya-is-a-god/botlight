@@ -42,7 +42,9 @@ class Bot
     const NGINX_NG = 'nginx -c /etc/nginx/bot/nginx.conf';
     const NGINX_UP = 'nginx -c /etc/nginx/bot/upstream.conf';
     // Xray's config test: its messages (on stdout) only when it fails
-    const XRAY_TEST = 'o=$(xray run -test -format json -config %s 2>&1); r=$?; [ $r -eq 0 ] || printf "%%s" "$o" | tail -n 20 >&2; [ $r -eq 0 ]';
+    // tested as a copy named *.json: Xray 26.10.29+ refuses other file
+    // extensions, even with -format json
+    const XRAY_TEST = 'f=/tmp/xray-test-$$.json; cp %s "$f" || exit 1; o=$(xray run -test -config "$f" 2>&1); r=$?; rm -f "$f"; [ $r -eq 0 ] || printf "%%s" "$o" | tail -n 20 >&2; [ $r -eq 0 ]';
 
     public $input;
     public $adguard;
