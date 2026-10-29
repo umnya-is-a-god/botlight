@@ -1135,7 +1135,8 @@ trait BotXray
 
         $name   = rawurlencode((string) ($c['email'] ?? ''));
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('xray') . ' -> ' . htmlspecialchars((string) ($c['email'] ?? ''));
-        if (file_exists(__DIR__ . '/subscription.php')) {
+        // the admin's own subscription page, app/subscription.php
+        if (file_exists(dirname(__DIR__) . '/subscription.php')) {
             $text[] = "<a href='$scheme://{$domain}/pac$hash/sub?id={$c['id']}'>subscription</a>";
         }
         // sing-box has no XHTTP transport: no sing-box links while XHTTP is on

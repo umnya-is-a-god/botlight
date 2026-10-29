@@ -359,7 +359,8 @@ trait BotSubscription
             $_GET['t'] = $v;
             $configs[$k] = $this->subscription(1);
         }
-        require __DIR__ . '/subscription.php';
+        // the admin's own page, app/subscription.php
+        require dirname(__DIR__) . '/subscription.php';
     }
 
     public function subscription($return = false)
