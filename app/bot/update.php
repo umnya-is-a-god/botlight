@@ -159,7 +159,7 @@ trait BotUpdate
         $info = "\nrelease signing key: " . ($this->signingKey() ? 'set' : 'not set (autoupdate is off)')
             . ($tag !== '' ? "\nnew release: " . htmlspecialchars($tag) : '');
         return [
-            'text' => '<pre><code class="language-shell">' . htmlentities(implode("\n", $mm)) . '</code></pre>' . $info,
+            'text' => '<pre>' . htmlentities(implode("\n", $mm)) . '</pre>' . $info,
             'data' => $data,
         ];
     }
