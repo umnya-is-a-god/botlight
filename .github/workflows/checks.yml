@@ -18,7 +18,7 @@ jobs:
       - name: php -l
         run: |
           php --version
-          for f in app/*.php; do php -l "$f" > /dev/null || exit 1; done
+          for f in app/*.php app/bot/*.php; do php -l "$f" > /dev/null || exit 1; done
       - name: PHPStan
         run: |
           curl -sSfLo phpstan.phar https://github.com/phpstan/phpstan/releases/download/2.3.2/phpstan.phar
