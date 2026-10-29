@@ -438,7 +438,8 @@ trait BotDomain
         // the cookie values and AdGuard's login: adguard.conf (adguardInclude)
         $r = <<<CONF
         location /adguard/ {
-                access_log /logs/nginx_adguard_access;
+                # client addresses only: the path carries the admin hash
+                access_log /logs/nginx_adguard_access ip_only;
                 if (\$adguard_ok = 0) {
                     rewrite .* /webapp redirect;
                 }
