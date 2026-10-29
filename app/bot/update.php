@@ -304,21 +304,16 @@ trait BotUpdate
     // 3 new images
     public function hostCommand($cmd, $draft)
     {
-        // the menu with the button becomes the note (no draft and no delete:
-        // Telegram for Android crashed on a draft while that message went);
-        // the cron's autoupdate has no menu, a new message then
-        $id = (int) ($this->input['message_id'] ?? 0);
-        if ($id) {
-            $this->update($this->input['chat'], $id, $draft);
-        } else {
-            $id = (int) ($this->send($this->input['from'], $draft)['result']['message_id'] ?? 0);
-        }
-        bot_write('/update/reload_message', "{$this->input['from']}:" . ($id ?: ''));
+        // the steps go in a draft; the menu with the button stays as it is:
+        // Telegram for Android crashed when an old, often edited menu was
+        // changed or deleted here
+        $this->sendDraft($this->input['from'], 1, $draft);
+        bot_write('/update/reload_message', "{$this->input['from']}:");
         // the token for the "bot started" message; cleared by update.sh
         bot_write('/update/key', $this->key, 0600);
         bot_write('/update/curl', json_encode([
             'chat_id'    => $this->input['chat'],
-            'message_id' => $id ?: null,
+            'message_id' => null,
             'text'       => '~t~'
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         bot_write('/update/pipe', $cmd);

@@ -98,11 +98,8 @@ json_str() {
     printf '"%s"' "$s"
 }
 
-# a step: the bot's note ("update...", the menu the button was in) shows it;
-# not a draft: Telegram for Android crashed on those
 tg_draft() {
-    [ -n "$_msg_id" ] || return 0
-    tg editMessageText "{\"chat_id\":$_chat_id,\"message_id\":$_msg_id,\"text\":$(json_str "$1")}"
+    tg sendMessageDraft "{\"chat_id\":$_chat_id,\"draft_id\":1,\"text\":$(json_str "$1")}"
 }
 
 # git verify-tag with the key in ./data/update-signing-key: a GPG public
@@ -271,7 +268,6 @@ do
         _curl_data=$(cat "$pwd/update/curl" 2>/dev/null)
         _chat_id=$(echo "$_curl_data" | grep -o '"chat_id":[0-9-]*' | head -1 | cut -d: -f2)
         _chat_id=${_chat_id:-0}
-        _msg_id=$(echo "$_curl_data" | grep -o '"message_id":[0-9]*' | head -1 | cut -d: -f2)
         : > "$pwd/update/pipe"
         : > "$pwd/update/target"
         backup_note=""
