@@ -122,6 +122,34 @@ wget -O- https://raw.githubusercontent.com/umnya-is-a-god/botlight/main/scripts/
 
 Xray, sing-box, wgcf и dnslookup берутся из релизов на GitHub: самый новый стабильный релиз, вышедший не меньше 3 дней назад (свежий релиз, который быстро отозвали или заменили, не попадёт), файл сверяется с SHA-256, который GitHub показывает для него. sing-box остаётся на серии 1.14.x: им собираются наборы правил для приложений, переход на следующую серию — вручную (`singbox_series` в `dockerfile/php.dockerfile`). Закрепить Xray: `XRAY_VERSION=v26.3.27` в `override.env`, затем `make rebuild S=xr`.
 
+## Версии компонентов
+
+### Обновляются сами
+При еженедельной сборке образов на GitHub: пакеты Alpine 3.24 (в том числе PHP 8.3, nginx, OpenSSL), AdGuard Home, Go (для dnstt) и программы из релизов на GitHub — Xray, sing-box (серия 1.14.x), wgcf, dnslookup (самый новый релиз, вышедший не меньше 3 дней назад). Бот сообщает о новых образах (🆕 на **update images**), на сервер они приходят этой кнопкой.
+
+### Обновляются вручную
+| Что | Где версия | Где смотреть новые |
+|---|---|---|
+| GitHub Actions: `actions/checkout`, `actions/delete-package-versions` | `.github/workflows/*.yml`, `@v5` | страница Releases проекта на GitHub |
+| PHPStan, hadolint (проверки в CI) | `.github/workflows/checks.yml`: версия в адресе и SHA-256 | Releases на GitHub |
+| ocserv | `dockerfile/ocserv.dockerfile`: `ocserv_version`, `ocserv_sha512` | https://www.infradead.org/ocserv/download/ |
+| dnstt | `dockerfile/dnstt.dockerfile`: `dnstt_version` | https://www.bamsoftware.com/git/dnstt.git (теги `v1.ГГГГММДД.0`) |
+| microsocks | `dockerfile/wireguard.dockerfile`: `microsocks_commit` | https://github.com/rofl0r/microsocks/commits |
+| серия sing-box | `dockerfile/php.dockerfile`: `singbox_series` | Releases sing-box (переход на 1.15 и дальше) |
+| Alpine (основная версия) | `.env`: `IMAGE=alpine:3.24` | https://alpinelinux.org/releases/ |
+| JSONEditor (редактор шаблонов в Mini App) | `app/webapp/jsoneditor.min.js` (версия в начале файла) | https://www.npmjs.com/package/jsoneditor |
+
+Последняя версия проекта на GitHub — командой (здесь для `actions/checkout`; для PHPStan без `v` в шаблоне):
+```shell
+git ls-remote --tags --refs https://github.com/actions/checkout | grep -o 'v[0-9][0-9.]*$' | sort -V | tail -1
+```
+
+### Как обновить
+1. В ветке `dev` поменять версию в файле из таблицы; где рядом контрольная сумма — и её. Посчитать: `curl -sL <адрес файла> | sha256sum` (для ocserv — `sha512sum`). Новая основная версия (`@v5` → `@v7`, Alpine 3.24 → 3.25, sing-box 1.14 → 1.15) — сначала прочитать в её Releases, что изменилось. Для Alpine проверить, что в новой версии есть пакеты `php83` из `dockerfile/php.dockerfile` (иначе заменить их на новые).
+2. Отправить в `dev`. На GitHub во вкладке **Actions** должны пройти **checks** и, если менялись `dockerfile/`, **images** (образы собираются и проверяются; без этого они не публикуются).
+3. На сервере на ветке `dev`: **update bot**, затем **update images**; проверить VPN, меню, подписки.
+4. Слить `dev` в `main`.
+
 ## Удаление
 
 ```shell
