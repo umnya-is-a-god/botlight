@@ -431,7 +431,7 @@ trait BotMenu
                 ],
             ],
         ];
-        if ($conf['domain']) {
+        if (!empty($conf['domain'])) {
             if ($cert = $this->nginxGetTypeCert()) {
                 switch ($cert) {
                     case 'letsencrypt':

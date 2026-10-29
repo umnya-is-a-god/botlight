@@ -217,7 +217,7 @@ trait BotLists
 
     public function exportList($type)
     {
-        $domains = $this->getPacConf()[$type];
+        $domains = $this->getPacConf()[$type] ?? [];
         if (!empty($domains)) {
             foreach ($domains as $k => $v) {
                 $text .= "$k;$v\n";
@@ -301,7 +301,7 @@ trait BotLists
                 'callback_data' => "/include $type",
             ],
         ];
-        $domains = $this->getPacConf()[$type];
+        $domains = $this->getPacConf()[$type] ?? [];
         if (!empty($domains)) {
             $all     = (int) ceil(count($domains) / $this->limit);
             $page    = min($page, $all - 1);

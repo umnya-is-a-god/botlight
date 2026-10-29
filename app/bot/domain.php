@@ -97,18 +97,20 @@ trait BotDomain
 
     public function sslip()
     {
-        $c = $this->config();
-        $p  = $this->getPacConf();
-        $ip = $this->ip;
-        $r  = $this->send($c['admin'][0], "start $ip");
+        $c     = $this->config();
+        $p     = $this->getPacConf();
+        $ip    = $this->ip;
+        // none yet on a fresh install: the first to write to the bot
+        $admin = (int) ($c['admin'][0] ?? 0);
+        $r     = $admin ? $this->send($admin, "start $ip") : [];
 
-        $this->input['chat']        = $c['admin'][0];
-        $this->input['message_id']  = $r['result']['message_id'];
+        $this->input['chat']        = $admin;
+        $this->input['message_id']  = $r['result']['message_id'] ?? 0;
         $this->input['callback_id'] = false;
         if (empty(array_diff_key($p, array_flip(['hashbot', 'oc_domain', 'adminhash', 'restart'])))) {
             // a fresh install: a nip.io name and a certificate for it
             $this->addDomain(str_replace('.', '-', $this->ip) . '.nip.io', 1);
-            $this->certTask(false, (int) $c['admin'][0]);
+            $this->certTask(false, $admin);
         }
         $this->menu();
     }
@@ -425,7 +427,7 @@ trait BotDomain
         $template = bot_read('/config/nginx_default.conf');
         // $template = preg_replace('~server_name ip~', "server_name {$this->ip}", $template);
         $template = preg_replace('~server_name domain~', "server_name " . (!empty($conf['domain']) ? " *.{$conf['domain']} {$conf['domain']}" : '_'), $template);
-        if ($conf['domain'] && $conf['letsencrypt']) {
+        if (!empty($conf['domain']) && !empty($conf['letsencrypt'])) {
             $template = preg_replace('/#~([^\n]+)?/', "#~{$conf['letsencrypt']}", $template);
             preg_match_all('~#-domain.+?#-domain~s', $template, $m);
             foreach ($m[0] as $v) {

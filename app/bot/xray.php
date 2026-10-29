@@ -642,7 +642,9 @@ trait BotXray
         $c     = $this->getXray();
         $p     = $this->getPacConf();
         $users = array_map(fn ($e) => trim($e), explode(',', $users));
-        $users = array_map(fn ($e) => explode(':', $e), $users);
+        $users  = array_map(fn ($e) => explode(':', $e), $users);
+        $uuids  = [];
+        $emails = [];
         foreach ($c['inbounds'][0]['settings']['clients'] as $k => $v) {
             $uuids[]  = $v['id'];
             $emails[] = $v['email'];
