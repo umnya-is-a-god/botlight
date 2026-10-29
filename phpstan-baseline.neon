@@ -45,12 +45,6 @@ parameters:
 			path: app/bot.php
 
 		-
-			message: '#^Variable \$emails might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/bot.php
-
-		-
 			message: '#^Variable \$extra might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -108,12 +102,6 @@ parameters:
 			message: '#^Variable \$uid might not be defined\.$#'
 			identifier: variable.undefined
 			count: 11
-			path: app/bot.php
-
-		-
-			message: '#^Variable \$uuids might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
 			path: app/bot.php
 
 		-
