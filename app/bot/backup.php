@@ -377,6 +377,10 @@ trait BotBackup
                 $this->update($this->input['chat'], $this->input['message_id'], implode("\n", $out));
                 bot_write(BOT_DATA . '/ocserv/ocserv.passwd', (string) $json['ocu']);
                 $this->restartOcserv($json['oc']);
+                // the camouflage secret, for the Mini App (as prepare() does)
+                if (preg_match('~^camouflage_secret\s*=\s*"([^"\n]*)"~m', bot_read(BOT_DATA . '/ocserv/ocserv.conf'), $m)) {
+                    $this->setSecret('oc_camouflage', $m[1]);
+                }
             }
             if (!empty($json['pac']['domain'])) {
                 $this->setUpstreamDomainOcserv($json['pac']['domain']);

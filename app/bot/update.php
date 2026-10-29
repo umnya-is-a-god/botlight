@@ -328,17 +328,36 @@ trait BotUpdate
                     $this->send($chat, 'import settings failed: ' . htmlspecialchars($e->getMessage()) . "\nthe settings are kept in data/backup/" . basename($kept) . ' (plain text: delete it once restored)');
                 }
             } else {
-                $this->send($chat, 'a settings backup from ' . date('Y-m-d H:i', (int) filemtime($this->update)) . ' was not applied: the current settings are not the defaults, so they were kept');
+                $kept = $this->keepLegacyUpdate($this->update, 'unapplied-' . date('Ymd-His', (int) filemtime($this->update)));
+                $this->send($chat, 'a settings backup from ' . date('Y-m-d H:i', (int) filemtime($this->update)) . ' was not applied: the current settings are not the defaults, so they were kept'
+                    . ($kept ? "\nthe backup is kept in data/backup/$kept (plain text: delete it once not needed)" : ''));
             }
             @unlink($this->update);
         }
-        // copies the earlier versions kept
+        // copies the earlier versions kept in ./update (writable by the
+        // containers): moved where only root reads them, never just deleted
         foreach (glob('/update/json.{failed,unapplied}-*', GLOB_BRACE) ?: [] as $f) {
-            @unlink($f);
+            if ($this->keepLegacyUpdate($f, 'old-' . basename($f))) {
+                @unlink($f);
+            }
         }
         $pac = $this->getPacConf();
         unset($pac['restart']);
         $this->setPacConf($pac);
+    }
+
+    // a plain settings file of an earlier version into data/backup (root only); its name there, or '' if it could not be copied
+    public function keepLegacyUpdate(string $file, string $suffix): string
+    {
+        $name = 'legacy-update-' . preg_replace('~[^A-Za-z0-9._-]~', '_', $suffix) . '.json';
+        try {
+            @mkdir(BOT_DATA . '/backup', 0700);
+            bot_write(BOT_DATA . "/backup/$name", bot_read($file), 0600);
+            return $name;
+        } catch (Throwable $e) {
+            error_log("keepLegacyUpdate $file: $e");
+            return '';
+        }
     }
 
     // settings as after a repository reset: Xray config of the repository, no own settings in pac.json
