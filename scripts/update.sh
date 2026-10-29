@@ -146,7 +146,17 @@ do
         last_fetch=$now
         git -C "$pwd" fetch -q --tags origin >/dev/null 2>&1 &
     fi
-    cmd=$(cat "$pwd/update/pipe" 2>/dev/null)
+    cmd=$(tr -d '\r\n' 2>/dev/null < "$pwd/update/pipe")
+    # the bot writes 1 (update), 2 (restart) or 3 (images); anything else
+    # is dropped before the containers are touched
+    case "$cmd" in
+        ''|1|2|3) ;;
+        *)
+            echo "update.sh: unknown command in update/pipe ignored" >&2
+            : > "$pwd/update/pipe"
+            cmd=""
+            ;;
+    esac
     if [[ -n "$cmd" ]]
     then
         # written by the bot (container): a plain branch name only
