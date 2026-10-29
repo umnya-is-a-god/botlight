@@ -304,8 +304,8 @@ trait BotUpdate
     // 3 new images
     public function hostCommand($cmd, $draft)
     {
-        // the menu with the button becomes the note (no draft and no delete:
-        // Telegram for Android crashed on a draft while that message went);
+        // the menu with the button becomes the note (not a draft: Telegram
+        // for Android crashed on those);
         // the cron's autoupdate has no menu, a new message then
         $id = (int) ($this->input['message_id'] ?? 0);
         if ($id) {

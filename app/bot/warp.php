@@ -48,23 +48,32 @@ trait BotWarp
             return $this->warp();
         }
 
+        // the steps in one message, edited as they go (not a draft:
+        // Telegram for Android crashed on those)
+        $msg  = 0;
+        $show = function ($text) use ($chat, &$msg) {
+            if ($msg) {
+                $this->update($chat, $msg, $text);
+            } else {
+                $msg = (int) ($this->send($chat, $text)['result']['message_id'] ?? 0);
+            }
+        };
         // a step in the wp container: the error (exit code, stderr) is shown, not the output
-        $step = function ($label, $cmd) use ($chat, &$log) {
+        $step = function ($label, $cmd) use (&$log, $show) {
             $log .= "$label...";
-            $this->sendDraft($chat, 1, $log);
+            $show($log);
             $r  = $this->sshRun($cmd, 'wp');
             $ok = $r['rc'] === 0;
             $log .= $ok ? " ok\n" : "\n" . htmlspecialchars(trim($r['err']) ?: ($r['rc'] === null ? 'no connection to wp' : "exit code {$r['rc']}")) . "\n";
-            $this->sendDraft($chat, 1, $log);
+            $show($log);
             return $ok;
         };
         $up = 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl" >&2; exit $ec';
-        $fail = function () use ($chat, &$log, $step, $up) {
+        $fail = function () use (&$log, $step, $show, $up) {
             $this->ssh('rm -rf /etc/warp/new', 'wp');
-            if (!$step('starting warp with the previous profile', 'ip link show wgcf-profile > /dev/null 2>&1 || [ ! -f /etc/warp/wgcf-profile.conf ] || { ' . $up . '; }')) {
-                return $this->send($chat, $log);
+            if ($step('starting warp with the previous profile', 'ip link show wgcf-profile > /dev/null 2>&1 || [ ! -f /etc/warp/wgcf-profile.conf ] || { ' . $up . '; }')) {
+                $show($log . "\nnothing changed: WARP runs with the previous profile");
             }
-            $this->send($chat, $log . "\nnothing changed: WARP runs with the previous profile");
         };
 
         $d = '/etc/warp/new';
@@ -93,7 +102,6 @@ trait BotWarp
             if ($step('back to the previous profile', 'cd /etc/warp && wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; rm -rf new; [ ! -f old/wgcf-profile.conf ] || cp -p old/wgcf-account.toml old/wgcf-profile.conf . ; ' . $up)) {
                 $this->ssh('rm -rf /etc/warp/old', 'wp');
             }
-            $this->send($chat, $log);
             return $this->warp();
         }
         $this->ssh('rm -rf /etc/warp/old', 'wp');
@@ -103,11 +111,9 @@ trait BotWarp
         // the menu shows the new account's exit, not the cached one
         $this->checkWarpStatus(true);
 
-        sleep(1);
-        // sendMessageDraft closes only when sendMessage is called — send a dummy and delete it
-        $r = $this->send($chat, '.');
-        if (!empty($r['result']['message_id'])) {
-            $this->delete($chat, $r['result']['message_id']);
+        // all went well: the steps are not needed any more
+        if ($msg) {
+            $this->delete($chat, $msg);
         }
 
         $this->warp();

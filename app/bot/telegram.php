@@ -76,7 +76,7 @@ trait BotTelegram
     {
         $this->tg ??= curl_init();
         $ch = $this->tg;
-        $repeatable = in_array($method, ['getUpdates', 'editMessageText', 'answerCallbackQuery', 'deleteMessage', 'sendMessageDraft', 'getFile', 'getMyName', 'setMyCommands', 'deleteWebhook'], true);
+        $repeatable = in_array($method, ['getUpdates', 'editMessageText', 'answerCallbackQuery', 'deleteMessage', 'getFile', 'getMyName', 'setMyCommands', 'deleteWebhook'], true);
         for ($try = 1; $try <= 2; $try++) {
             // the options of the previous request go, the connection and the cached address stay
             curl_reset($ch);
@@ -284,17 +284,6 @@ trait BotTelegram
         } else {
             return [$text];
         }
-    }
-
-    public function sendDraft($chat, $draft_id, $text = '', $mode = 'HTML')
-    {
-        $data = [
-            'chat_id'    => $chat,
-            'draft_id'   => $draft_id,
-            'text'       => $text,
-            'parse_mode' => $mode,
-        ];
-        return $this->request('sendMessageDraft', json_encode($data), 1);
     }
 
     public function sendPhoto($chat, $id_url_cFile, $caption = false, $to = false)
