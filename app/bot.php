@@ -5,7 +5,7 @@ require_once __DIR__ . '/bot/telegram.php';
 require_once __DIR__ . '/bot/remote.php';
 require_once __DIR__ . '/bot/settings.php';
 require_once __DIR__ . '/bot/xray.php';
-require_once __DIR__ . '/bot/subscription.php';
+require_once __DIR__ . '/bot/subscriptions.php';
 require_once __DIR__ . '/bot/lists.php';
 require_once __DIR__ . '/bot/adguard.php';
 require_once __DIR__ . '/bot/openconnect.php';
