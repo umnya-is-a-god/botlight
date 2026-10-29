@@ -51,7 +51,9 @@ jobs:
           sudo mkdir /data && sudo chown "$(id -u)" /data
           php tests/auth_test.php
       - name: update.sh
-        run: bash tests/update_sh_test.sh
+        run: |
+          bash tests/update_sh_test.sh
+          bash tests/update_apply_test.sh
 
   docker:
     runs-on: ubuntu-24.04

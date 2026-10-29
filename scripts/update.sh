@@ -137,9 +137,35 @@ check_update() {
     echo "$ref"
 }
 
+# what an update brought since commit $1: the version if it changed, the
+# new commits (subjects, newest first) and, after a change of branch, the
+# ones the new branch does not have; the bot shows it after the restart
+changes_since() {
+    local before="$1" old new n gone
+    old=$(git show "$before:VERSION" 2> /dev/null | tr -d '\r\n')
+    new=$(tr -d '\r\n' < VERSION 2> /dev/null)
+    [ -n "$old" ] && [ "$old" != "$new" ] && echo "v$old → v$new"
+    n=$(git rev-list --no-merges --count "$before..HEAD" 2> /dev/null)
+    if [ "${n:-0}" -eq 0 ]; then
+        echo "no new commits"
+    else
+        git log --no-merges --format='- %s' -n 30 "$before..HEAD"
+        [ "$n" -gt 30 ] && echo "... and $((n - 30)) more"
+    fi
+    gone=$(git rev-list --no-merges --count "HEAD..$before" 2> /dev/null)
+    if [ "${gone:-0}" -gt 0 ]; then
+        echo "not in this branch ($gone):"
+        git log --no-merges --format='- %s' -n 10 "HEAD..$before"
+        [ "$gone" -gt 10 ] && echo "... and $((gone - 10)) more"
+    fi
+    true
+}
+
 # moves the code to what check_update printed; prints what happened
 apply_update() {
-    local ref="$1" stash out
+    local ref="$1" stash out before from
+    before=$(git rev-parse -q --verify HEAD)
+    from=$(git rev-parse --abbrev-ref HEAD)
     # local edits of tracked files would stop the merge: kept in git stash
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
         stash="botlight update $(date '+%Y-%m-%d %H:%M')"
@@ -157,7 +183,7 @@ apply_update() {
                 echo "branch $ref: $out"
                 return 1
             fi
-            echo "branch: $ref"
+            echo "branch: $from → $ref"
             ref='@{u}'
             ;;
     esac
@@ -165,7 +191,7 @@ apply_update() {
         echo "not updated: $out"
         return 1
     fi
-    echo "$out"
+    changes_since "$before"
 }
 
 while true

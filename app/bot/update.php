@@ -37,11 +37,34 @@ trait BotUpdate
         return is_file(BOT_DATA . '/update-signing-key') && filesize(BOT_DATA . '/update-signing-key') > 0;
     }
 
+    /**
+     * What "update bot" moves to: the tracked branch (@{u}), or
+     * origin/<branch> when another branch is chosen in manage updates.
+     */
+    public function updateTarget(): string
+    {
+        $branch  = trim((string) @file_get_contents('/update/branch'));
+        $current = (string) exec('git -C / rev-parse --abbrev-ref HEAD 2>/dev/null');
+        if ($branch !== '' && $branch !== $current && preg_match('~^[A-Za-z0-9._][A-Za-z0-9._/-]{0,99}$~D', $branch)) {
+            return "origin/$branch";
+        }
+        return '@{u}';
+    }
+
+    // "v1.1 → v1.2" when the update changes VERSION, '' otherwise
+    public function versionChange(string $to): string
+    {
+        $old = trim((string) exec('git -C / show HEAD:VERSION 2>/dev/null'));
+        $new = trim((string) exec('git -C / show ' . escapeshellarg("$to:VERSION") . ' 2>/dev/null'));
+        return $new !== '' && $new !== $old ? htmlspecialchars("v$old → v$new") : '';
+    }
+
     public function changelog()
     {
-        $commits = $this->newCommits(30);
+        $to      = $this->updateTarget();
+        $commits = $this->newCommits(30, $to);
         $text    = $commits
-            ? "New in " . htmlspecialchars(exec('git -C / rev-parse --abbrev-ref @{u} 2>/dev/null')) . ":\n\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
+            ? "New in " . htmlspecialchars(exec('git -C / rev-parse --abbrev-ref ' . escapeshellarg($to) . ' 2>/dev/null')) . ":\n\n- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
             : 'no updates';
         $this->send($this->input['chat'], $text);
     }
@@ -151,16 +174,30 @@ trait BotUpdate
             return;
         }
         if (empty($yes)) {
-            $commits = $this->newCommits(30);
-            $branch  = trim((string) @file_get_contents('/update/branch'));
+            // on another branch: what that branch has and this one has not
+            $to      = $this->updateTarget();
+            $commits = $this->newCommits(30, $to);
             $current = exec('git -C / rev-parse --abbrev-ref HEAD 2>/dev/null');
             $text    = $this->i18n('Menu') . ' -> ' . $this->i18n('update bot') . "\n\n";
-            if ($branch !== '' && $branch !== $current) {
-                $text .= 'branch: ' . htmlspecialchars("$current → $branch") . "\n\n";
+            if (($v = $this->versionChange($to)) !== '') {
+                $text .= "$v\n";
             }
-            $text .= $commits
+            if ($to !== '@{u}') {
+                $text .= 'branch: ' . htmlspecialchars($current . ' → ' . substr($to, strlen('origin/'))) . "\n";
+            }
+            $text .= "\n" . ($commits
                 ? "- " . implode("\n- ", array_map(fn($e) => htmlspecialchars($e), $commits))
-                : 'no new commits';
+                : 'no new commits');
+            // and what the running version has that the other branch has not
+            $gone = (int) exec('git -C / rev-list --no-merges --count ' . escapeshellarg("$to..HEAD") . ' 2>/dev/null');
+            if ($to !== '@{u}' && $gone > 0) {
+                $text .= "\n\nnot in that branch: $gone commits of the running version";
+            }
+            // the host fetches hourly (scripts/update.sh): the list is as of then
+            $fetched = @filemtime('/.git/FETCH_HEAD');
+            if ($fetched) {
+                $text .= "\n(as of " . date('Y-m-d H:i', $fetched) . '; the update itself takes the latest)';
+            }
             $text .= "\n\nThe bot and the VPN stop for the update (a minute or more). Settings in ./data are kept.";
             return $this->update($this->input['chat'], $this->input['message_id'], $text, [
                 [['text' => $this->i18n('update bot'), 'callback_data' => '/applyupdatebot yes']],
