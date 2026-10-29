@@ -334,25 +334,21 @@ trait BotSubscription
         }
         // the user first: nothing else is read for an unknown or disabled one
         $xr     = $this->getXray();
-        $flag = true;
         $client = null;
         $sid = is_string($_GET['s'] ?? null) ? $_GET['s'] : '';
-        foreach ($xr['inbounds'][0]['settings']['clients'] as $k => $v) {
+        foreach ($xr['inbounds'][0]['settings']['clients'] as $v) {
             if ($sid !== '' && hash_equals((string) $v['id'], $sid)) {
-                if (empty($v['off'])) {
-                    $flag = false;
-                }
-                $template = base64_decode((string) ($v["{$type}template"] ?? ''));
-                $uid      = $v['id'];
-                $email    = $v['email'];
-                $client   = $v;
+                $client = $v;
                 break;
             }
         }
-        if ($flag) {
+        if ($client === null || !empty($client['off'])) {
             header('404', true, 404);
             exit;
         }
+        $template = base64_decode((string) ($client["{$type}template"] ?? ''));
+        $uid      = $client['id'];
+        $email    = $client['email'];
         $pac    = $this->getPacConf();
         $pac["{$type}templates"] = $this->getTemplates($type);
         if ($type == 'sing' && ($pac['transport'] ?? '') == 'xhttp') {
@@ -700,6 +696,7 @@ trait BotSubscription
 
     public function clashRules($c, $uid, $domain)
     {
+        $tmp    = [];
         $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
         foreach ($c['rules'] as $v) {
@@ -819,6 +816,8 @@ trait BotSubscription
     public function addRuleSet($route)
     {
         if (!empty($route['rules'])) {
+            // the outbound => the rule the remote rule-sets join
+            $t = [];
             foreach ($route['rules'] as $k => $v) {
                 if (!empty($v['addruleset'])) {
                     $t[($v['outbound'] ?? '') ?: 'block'] = $k;
@@ -829,7 +828,7 @@ trait BotSubscription
                 foreach ($p['rulessetlist'] as $k => $v) {
                     if (!empty($v)) {
                         [$type, $time, $url] = explode(':', $k, 3);
-                        if (preg_match('~\.srs$~', $url) && !empty($route['rules'][$t[$type]])) {
+                        if (preg_match('~\.srs$~', $url) && isset($t[$type]) && !empty($route['rules'][$t[$type]])) {
                             $route['rule_set'][] = [
                                 "tag"             => $k,
                                 "type"            => "remote",
@@ -928,7 +927,8 @@ trait BotSubscription
 
     public function createRuleSet($route, $uid, $domain)
     {
-        $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
+        $ruleset = [];
+        $scheme  = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
         $hash   = $this->getHashBot();
 
         foreach ($route['rules'] as $k => $v) {

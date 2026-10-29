@@ -169,6 +169,8 @@ trait BotTelegram
         if (is_null($text)) {
             $text = '';
         }
+        $extra = null;
+        $r     = [];
         if ($button) {
             $extra = ['inline_keyboard' => $button];
         }

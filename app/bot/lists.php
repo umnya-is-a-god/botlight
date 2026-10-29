@@ -45,6 +45,7 @@ trait BotLists
 
     public function addInclude(string $domains, $type)
     {
+        $page = 0;
         if ($type == 'rulessetlist' && !preg_match('~^.+:.+:https?://.+~', $domains)) {
             $this->send($this->input['from'], 'wrong pattern, enter [direct|block|proxy|custom outbound]:time:URL');
             return;
@@ -163,6 +164,8 @@ trait BotLists
             case 'rulessetlist':
                 $dir = 'rulesset';
                 break;
+            default:
+                $dir = $type;
         }
         $text   = <<<text
                 {$this->i18n('Menu')} -> $dir -> {$this->i18n('delete all')}
@@ -219,6 +222,7 @@ trait BotLists
     {
         $domains = $this->getPacConf()[$type] ?? [];
         if (!empty($domains)) {
+            $text = '';
             foreach ($domains as $k => $v) {
                 $text .= "$k;$v\n";
             }

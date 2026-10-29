@@ -14,6 +14,10 @@ trait BotLogs
                     $this->time3 = time();
                     $r = $this->analysisIp(return: 1);
                     if (!empty($r)) {
+                        $t    = [];
+                        $text = '';
+                        $ban  = 0;
+                        $ips  = [];
                         foreach ($r as $k => $v) {
                             foreach ($v as $i) {
                                 $t[$i['title']][$k] = 1;
@@ -467,6 +471,7 @@ trait BotLogs
 
     public function importIps($type)
     {
+        $domains = [];
         switch ($type) {
             case 'telegram':
                 $r = file_get_contents('https://core.telegram.org/resources/cidr.txt');

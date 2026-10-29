@@ -541,7 +541,7 @@ class Bot
                 $this->xtlsblock(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/routes(?: (\d+))?$~', $this->input['callback'], $m):
-                $this->routes(($m[1] ?? null) ?: 0);
+                $this->routes();
                 break;
             case preg_match('~^/xtlswarp(?: (\d+))?$~', $this->input['callback'], $m):
                 $this->xtlswarp(($m[1] ?? null) ?: 0);
