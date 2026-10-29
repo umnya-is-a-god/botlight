@@ -12,11 +12,6 @@
 /sshhost/*
 !/sshhost/.gitkeep
 /.rebuild.log
-/sftp-config.json
-/tg.pyr
-/todo.todo
-.vscode/
-.idea/
 mirror/.env
 update/*
 !update/.gitkeep
@@ -30,7 +25,6 @@ override.php
 docker-compose.override.yml
 backup.json
 app/webapp/override/
-.rest
 
 subscription.php
 location.conf

@@ -143,8 +143,10 @@ trait BotWarp
     {
         $this->syncWarpProfile();
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('warp');
-        // command output goes into an HTML message: escaped
-        $text[] = "status: <pre>" . htmlspecialchars((string) $this->ssh('wgcf trace', 'wp')) . '</pre>';
+        // checked now, the way Xray goes (the main menu's status is refreshed too)
+        $this->checkWarpStatus(true);
+        $st     = $this->cachedWarpStatus();
+        $text[] = 'status: ' . ($st === 'off' ? $this->i18n('off') . ' off' : $this->i18n('on') . ' ' . ($st === 'plus' ? 'WARP+' : 'on'));
         $text[] = 'warp+ key: ' . ($this->secret('warp') !== '' ? $this->mask($this->secret('warp')) : $this->i18n('off'));
         $data[] = [
             [

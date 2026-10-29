@@ -152,7 +152,8 @@ trait BotMenu
                 $status[]  = $this->i18n(!empty($st['dnstt']) ? 'on' : 'off') . ' ' . $this->i18n('dnstt');
                 $portcol[] = $this->i18n(!empty($ports['dnstt']['enable']) ? 'on' : 'off') . (!empty($ports['dnstt']['enable']) ? ' ' . $ports['dnstt']['port'] : ' port is closed');
             }
-            $status[]  = $this->i18n($this->cachedWarpStatus()) . ' ' . $this->i18n('warp');
+            // on, plus (WARP+) or off
+            $status[]  = $this->i18n($this->cachedWarpStatus() === 'off' ? 'off' : 'on') . ' ' . $this->i18n('warp');
             $portcol[] = '';
             if (!empty($conf['bridge'])) {
                 $status[]  = $this->i18n('on') . ' bridge';
