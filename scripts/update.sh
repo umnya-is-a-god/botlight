@@ -308,6 +308,9 @@ do
 
         tg_draft "stopping the bot"
         docker compose down --remove-orphans
+        # the bot starts quietly: the report comes from here, then the menu
+        # (Bot::sslip skips its start message and menu once)
+        : > "$pwd/update/restarting"
 
         if [[ "$cmd" == "1" ]]
         then
@@ -328,6 +331,7 @@ do
             if ! bad=$(healthy); then
                 # the new images do not run here: the previous ones back
                 bash "$pwd/scripts/images.sh" rollback
+                : > "$pwd/update/restarting"
                 make start
                 report="$report\nnot healthy with the new images:\n$bad\nthe previous images are back"
             fi

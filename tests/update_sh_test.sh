@@ -52,9 +52,11 @@ sleep 3
 check 'restart (2): containers stopped' called 'docker compose down'
 check 'restart (2): started again' called 'make start'
 check 'restart (2): no backup' not_called 'backup sent'
+check 'restart (2): the bot told it starts for a host command' test -e "$tmp/update/restarting"
 
 # new images (3) when the registry has nothing new: nothing is stopped
 : > "$tmp/calls"
+rm -f "$tmp/update/restarting"
 sleep 2
 printf '3' > "$tmp/update/pipe"
 sleep 4
@@ -62,6 +64,7 @@ check 'images (3), nothing new: images asked for' called 'docker pull'
 check 'images (3), nothing new: containers not stopped' not_called 'docker compose down'
 check 'images (3), nothing new: menu back' grep -qx '0:config' "$tmp/update/menu"
 check 'images (3), nothing new: no backup' not_called 'backup sent'
+check 'images (3), nothing new: not restarted' test ! -e "$tmp/update/restarting"
 
 # an update (1) with no new commits: nothing is stopped, the menu comes back
 : > "$tmp/calls"

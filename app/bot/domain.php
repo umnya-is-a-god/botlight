@@ -102,7 +102,11 @@ trait BotDomain
         $ip    = $this->ip;
         // none yet on a fresh install: the first to write to the bot
         $admin = (int) ($c['admin'][0] ?? 0);
-        $r     = $admin ? $this->send($admin, "start $ip") : [];
+        // started by scripts/update.sh (update, restart, images): it sends
+        // its report and then the menu (menuAfterHost), so not here too
+        $host = is_file('/update/restarting');
+        @unlink('/update/restarting');
+        $r     = $admin && !$host ? $this->send($admin, "start $ip") : [];
 
         $this->input['chat']        = $admin;
         $this->input['message_id']  = $r['result']['message_id'] ?? 0;
@@ -112,7 +116,9 @@ trait BotDomain
             $this->addDomain(str_replace('.', '-', $this->ip) . '.nip.io', 1);
             $this->certTask(false, $admin);
         }
-        $this->menu();
+        if (!$host) {
+            $this->menu();
+        }
     }
 
     public function deleteSSL($notmenu = false)
