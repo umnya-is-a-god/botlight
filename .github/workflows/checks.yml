@@ -56,6 +56,8 @@ jobs:
           bash tests/update_apply_test.sh
       - name: release.sh
         run: bash tests/release_test.sh
+      - name: warp_profile.sh
+        run: bash tests/warp_profile_test.sh
 
   docker:
     runs-on: ubuntu-24.04

@@ -17,10 +17,10 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 
     -keyout "$certs/cert_private" -out "$certs/cert_public" 2> /dev/null
 chmod 644 "$certs"/*
 
-# in IMAGE, with the repository's config/ and system/ mounted read-only
+# in IMAGE, with the repository's config/, system/ and scripts/ mounted read-only
 run() {
     docker run --rm --entrypoint /bin/sh \
-        -v "$PWD/config:/c:ro" -v "$PWD/system:/system:ro" -v "$certs:/certs:ro" \
+        -v "$PWD/config:/c:ro" -v "$PWD/system:/system:ro" -v "$PWD/scripts:/scripts:ro" -v "$certs:/certs:ro" \
         "$image" -c "$1"
 }
 check() {
@@ -65,6 +65,9 @@ case "$kind" in
         ;;
     wg)
         check 'wgcf, WireGuard, microsocks' 'wgcf --help > /dev/null && command -v wg-quick && wg --version && command -v microsocks'
+        # the profile as wgcf 2.3+ writes it, fitted with busybox awk (Bot::addWarpPlus, start_wp.sh)
+        check 'a WARP profile keeps its IPv4 address and route' \
+            'printf "[Interface]\nAddress = 172.16.0.2/32, 2606::1/128\nDNS = 1.1.1.1\n[Peer]\nAllowedIPs = 0.0.0.0/0, ::/0\n" > /tmp/p && sh /scripts/warp_profile.sh /tmp/p && grep -qx "Address = 172.16.0.2/32" /tmp/p && grep -qx "AllowedIPs = 0.0.0.0/0" /tmp/p && ! grep -q DNS /tmp/p'
         ;;
     dnstt)
         check 'dnstt-server makes its keys' 'dnstt-server -gen-key -privkey-file /tmp/k -pubkey-file /tmp/p && test -s /tmp/p'

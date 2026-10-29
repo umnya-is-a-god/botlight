@@ -68,15 +68,18 @@ trait BotWarp
         if ($key !== '' && !$step('applying the license key', "cd $d && sed -i 's/^license_key.*/license_key = \"$key\"/' wgcf-account.toml && wgcf update > /dev/null")) {
             return $fail();
         }
-        // no IPv6 (the container has none) and no DNS line (see start_wp.sh)
-        if (!$step('generating the profile', "cd $d && wgcf generate > /dev/null && sed -i '/^Address.*:/d; /^AllowedIPs.*::/d; /^DNS *=/d' wgcf-profile.conf")) {
+        // IPv4 only, no DNS line (scripts/warp_profile.sh, also used by start_wp.sh)
+        if (!$step('generating the profile', "cd $d && wgcf generate > /dev/null && sh /scripts/warp_profile.sh wgcf-profile.conf")) {
             return $fail();
         }
         $up = 'out=$(wg-quick up /etc/warp/wgcf-profile.conf 2>&1); ec=$?; [ "$ec" -ne 0 ] && printf "%s" "$out" | grep -v "skip sysctl" >&2; exit $ec';
+        // up is not enough: Cloudflare must see the traffic come through WARP
+        $works = 'for i in 1 2 3 4 5; do wgcf trace 2>/dev/null | grep -qE "^warp=(on|plus)$" && exit 0; sleep 2; done; echo "WARP does not answer through the new profile" >&2; exit 1';
         // the previous profile stays in old/ until the new one is up
         // (start_wp.sh goes back to it if the container restarts meanwhile)
         if (!$step('switching to the new profile', 'cd /etc/warp && wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; rm -rf old && mkdir old && { [ ! -f wgcf-profile.conf ] || cp -p wgcf-account.toml wgcf-profile.conf old/; } && mv new/wgcf-account.toml new/wgcf-profile.conf . && rmdir new')
-            || !$step('starting warp', $up)) {
+            || !$step('starting warp', $up)
+            || !$step('checking warp', $works)) {
             // the new profile does not work here: the previous one back
             if ($step('back to the previous profile', 'cd /etc/warp && wg-quick down /etc/warp/wgcf-profile.conf > /dev/null 2>&1; rm -rf new; [ ! -f old/wgcf-profile.conf ] || cp -p old/wgcf-account.toml old/wgcf-profile.conf . ; ' . $up)) {
                 $this->ssh('rm -rf /etc/warp/old', 'wp');

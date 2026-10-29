@@ -45,8 +45,8 @@ register() (
         wgcf update > /dev/null || echo "[warp] the license key is not applied, free WARP"
     fi
     wgcf generate > /dev/null || exit 1
-    # no IPv6: the container has none
-    sed -i '/^Address.*:/d; /^AllowedIPs.*::/d' wgcf-profile.conf
+    # IPv4 only, no DNS line
+    sh /scripts/warp_profile.sh wgcf-profile.conf || exit 1
     cd .. || exit 1
     # the bot may have made a profile meanwhile
     [ -f "$WGCF_CONF" ] || mv boot/wgcf-account.toml boot/wgcf-profile.conf .
@@ -59,6 +59,14 @@ if [ ! -f "$WGCF_CONF" ] && [ -f old/wgcf-profile.conf ]; then
     cp -p old/wgcf-account.toml old/wgcf-profile.conf .
 fi
 rm -rf boot new
+
+# a profile without its IPv4 address or route (an earlier version cut them
+# out of wgcf 2.3's one-line format): made again from the same account
+if [ -f "$WGCF_CONF" ] && [ -f wgcf-account.toml ] \
+    && { ! grep -q '^Address' "$WGCF_CONF" || ! grep -q '^AllowedIPs' "$WGCF_CONF"; }; then
+    echo "[warp] the profile has no address or route, generating it again"
+    wgcf generate > /dev/null && sh /scripts/warp_profile.sh "$WGCF_CONF"
+fi
 
 until [ -f "$WGCF_CONF" ]; do
     echo "[warp] Registering WARP account..."
