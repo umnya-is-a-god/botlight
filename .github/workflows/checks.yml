@@ -58,6 +58,8 @@ jobs:
         run: bash tests/release_test.sh
       - name: warp_profile.sh
         run: bash tests/warp_profile_test.sh
+      - name: images.sh cleanup
+        run: bash tests/images_clean_test.sh
 
   docker:
     runs-on: ubuntu-24.04

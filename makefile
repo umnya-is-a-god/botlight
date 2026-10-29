@@ -26,8 +26,10 @@ images: # новые образы из GitHub (без них — сборка з
 	VER=$(shell cat VERSION) bash ./scripts/images.sh update
 rebuild: # пересборка образов заново, по одному: свежие базовые образы и пакеты (S=сервис — только его)
 	for s in $(or $(S),ng php ad xr oc wp dnstt); do \
-		VER=$(shell cat VERSION) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || exit 1; \
+		VER=$(shell cat VERSION) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || { bash ./scripts/images.sh buildclean; exit 1; }; \
 	done
+	@# the build cache and the base images: not needed after the build
+	bash ./scripts/images.sh buildclean
 d: # остановка контейнеров
 	-kill -9 $(shell cat ./.update_pid 2>/dev/null) > /dev/null
 	docker compose down --remove-orphans

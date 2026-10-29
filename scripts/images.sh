@@ -12,8 +12,12 @@
 #                       registry cannot be reached), the current ones kept
 #                       as <tag>-prev; prints what changed
 #   images.sh rollback  the <tag>-prev images back in place
-#   images.sh prune     images no longer used: earlier builds of the bot
-#                       and its images under the names of earlier versions
+#   images.sh prune     images no longer used: earlier builds of the bot,
+#                       its images under the names of earlier versions and
+#                       those of other branches (this branch's and its
+#                       -prev stay)
+#   images.sh buildclean  after a build here: the build cache and the base
+#                       images the build pulled
 cd "$(dirname "$0")/.." || exit 1
 [ -f override.env ] || touch override.env
 
@@ -36,8 +40,24 @@ compose() { docker compose --env-file ./.env --env-file ./override.env "$@"; }
 
 # built here from dockerfile/, under the same name: anew, so the newest
 # packages and programs are taken, not the ones of an earlier build
+built=""
 build() {
+    built=1
     compose build --pull --no-cache "$1"
+}
+
+# After a build here: its cache and the base images it pulled are not
+# needed, the images come from GitHub's registry (gigabytes otherwise).
+# Docker keeps one build cache for the whole server: all of it goes. A base
+# image a container still uses stays (docker rmi refuses).
+buildclean() {
+    local base
+    docker builder prune -af > /dev/null 2>&1
+    base=$(sed -n 's/^IMAGE=//p' .env override.env 2> /dev/null | tr -d '\r' | tail -n 1)
+    for b in "${base:-alpine:3.24}" golang:alpine adguard/adguardhome; do
+        docker rmi "$b" > /dev/null 2>&1
+    done
+    true
 }
 
 # the digest the registry has for an image (ghcr.io only), '' if unknown
@@ -70,8 +90,10 @@ case "$1" in
             img=$(name "${s#*:}")
             docker image inspect "$img" > /dev/null 2>&1 && continue
             echo "images: $img"
-            docker pull -q "$img" > /dev/null 2>&1 || build "$svc" || exit 1
+            docker pull -q "$img" > /dev/null 2>&1 || build "$svc" || { buildclean; exit 1; }
         done
+        [ -n "$built" ] && buildclean
+        true
         ;;
 
     check)
@@ -99,6 +121,7 @@ case "$1" in
             after=$(docker image inspect --format '{{.Id}}' "$img" 2> /dev/null)
             [ "$before" != "$after" ] && changed="$changed $n"
         done
+        [ -n "$built" ] && buildclean
         echo "new:${changed:- none}"
         ;;
 
@@ -116,11 +139,22 @@ case "$1" in
         docker images --format '{{.Repository}}:{{.Tag}}' \
             | grep -E '^botlight/vpnbot-[a-z]+:local$' \
             | xargs -r docker rmi > /dev/null 2>&1
+        # the bot's images of other branches (after a change of branch);
+        # one a container still uses stays (docker rmi refuses)
+        docker images --format '{{.Repository}} {{.Tag}}' | while read -r repo tag; do
+            case "$repo" in "$IMAGES"-*) ;; *) continue ;; esac
+            case "$tag" in "$IMAGE_TAG" | "$IMAGE_TAG-prev") continue ;; esac
+            docker rmi "$repo:$tag" > /dev/null 2>&1
+        done
         true
         ;;
 
+    buildclean)
+        buildclean
+        ;;
+
     *)
-        echo "usage: images.sh tag|ensure|check|update|rollback|prune" >&2
+        echo "usage: images.sh tag|ensure|check|update|rollback|prune|buildclean" >&2
         exit 1
         ;;
 esac
