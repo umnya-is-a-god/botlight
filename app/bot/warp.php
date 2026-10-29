@@ -104,12 +104,12 @@ trait BotWarp
      * loop (service container) runs it once a minute and keeps the answer
      * in a file; the main menu only reads it.
      */
-    public function checkWarpStatus($force = false)
+    public function checkWarpStatus($force = false, ?array $trace = null)
     {
         if ($force || empty($this->time_warp_status) || time() - $this->time_warp_status > 60) {
             $this->time_warp_status = time();
             $f = '/logs/.warp_status';
-            file_put_contents("$f.tmp", $this->warpStatus());
+            file_put_contents("$f.tmp", $this->warpStatus($trace));
             rename("$f.tmp", $f);
         }
     }
@@ -124,14 +124,24 @@ trait BotWarp
         return 'off';
     }
 
-    public function warpStatus()
+    // on, plus (WARP+) or off, from warpTrace() (made now if not given)
+    public function warpStatus(?array $trace = null)
     {
-        // through the WARP socks proxy, like Xray's warp outbound (the name is
-        // resolved by microsocks); a request through WARP can take a few
-        // seconds. 1.1.1.1 does not work here: HTTP redirects, HTTPS hangs
+        $trace ??= $this->warpTrace();
+        return preg_match('~^\w+$~', $trace['warp'] ?? '') ? $trace['warp'] : 'off';
+    }
+
+    /**
+     * Cloudflare's trace (key => value: warp, ip, loc, colo, ...) through
+     * the WARP socks proxy, like Xray's warp outbound (the name is resolved
+     * by microsocks); a request through WARP can take a few seconds.
+     * 1.1.1.1 does not work here: HTTP redirects, HTTPS hangs
+     */
+    public function warpTrace(): array
+    {
         $st = $this->ssh('curl -s -m 8 -x socks5h://wp:1080 https://cloudflare.com/cdn-cgi/trace', 'xr');
-        preg_match('~warp=(\w+)~', (string) $st, $m);
-        return trim($m[1] ?? '') ?: 'off';
+        preg_match_all('~^(\w+)=(.*)$~m', (string) $st, $m);
+        return array_combine($m[1], array_map('trim', $m[2]));
     }
 
     /**
@@ -144,9 +154,14 @@ trait BotWarp
         $this->syncWarpProfile();
         $text[] = $this->i18n('Menu') . ' -> ' . $this->i18n('warp');
         // checked now, the way Xray goes (the main menu's status is refreshed too)
-        $this->checkWarpStatus(true);
-        $st     = $this->cachedWarpStatus();
+        $trace  = $this->warpTrace();
+        $this->checkWarpStatus(true, $trace);
+        $st     = $this->warpStatus($trace);
         $text[] = 'status: ' . ($st === 'off' ? $this->i18n('off') . ' off' : $this->i18n('on') . ' ' . ($st === 'plus' ? 'WARP+' : 'on'));
+        if ($st !== 'off') {
+            // where the traffic leaves WARP: address, country, Cloudflare data centre
+            $text[] = 'exit: ' . htmlspecialchars(($trace['ip'] ?? '?') . ' · ' . ($trace['loc'] ?? '?') . ' (' . ($trace['colo'] ?? '?') . ')');
+        }
         $text[] = 'warp+ key: ' . ($this->secret('warp') !== '' ? $this->mask($this->secret('warp')) : $this->i18n('off'));
         $data[] = [
             [
