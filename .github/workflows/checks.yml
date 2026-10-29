@@ -1,6 +1,6 @@
 # Checks on every push and pull request: PHP syntax and static analysis,
-# shell scripts, Dockerfiles, the compose file. The tools are fixed
-# releases, checked by SHA-256.
+# shell scripts, Dockerfiles, the compose file, the config templates and
+# the tests in tests/. The tools are fixed releases, checked by SHA-256.
 name: checks
 
 on:
@@ -18,7 +18,7 @@ jobs:
       - name: php -l
         run: |
           php --version
-          for f in app/*.php app/bot/*.php; do php -l "$f" > /dev/null || exit 1; done
+          for f in app/*.php app/bot/*.php tests/*.php; do php -l "$f" > /dev/null || exit 1; done
       - name: PHPStan
         run: |
           curl -sSfLo phpstan.phar https://github.com/phpstan/phpstan/releases/download/2.3.2/phpstan.phar
@@ -30,7 +30,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: shellcheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck scripts/*.sh tests/*.sh
+
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: config templates parse
+        run: |
+          for f in config/*.json; do
+            php -r 'json_decode(file_get_contents($argv[1]), false, 512, JSON_THROW_ON_ERROR);' "$f" || exit 1
+          done
+          python3 -c 'import yaml' 2> /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+          python3 -c 'import sys, yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]' config/*.yaml
+      - name: Mini App sign-in
+        run: php tests/webapp_auth_test.php
+      - name: admins
+        run: |
+          # the bot's data folder is /data
+          sudo mkdir /data && sudo chown "$(id -u)" /data
+          php tests/auth_test.php
+      - name: update.sh
+        run: bash tests/update_sh_test.sh
 
   docker:
     runs-on: ubuntu-24.04
