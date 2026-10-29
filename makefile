@@ -63,15 +63,14 @@ delete: # полное удаление бота: только его конте
 	rm -rf /root/vpnbot
 s:
 	git status -su
-c:
-	git add config/
-	git checkout .
-	git reset
-reset:
+reset: # сброс к начальному состоянию: удаляются все настройки, пользователи, ключи, тома AdGuard и WARP; остаются токен бота и админы
+	@printf 'All settings, users and keys are deleted; the bot token and the admins stay. Type yes to go on: '; read a; [ "$$a" = yes ]
 	make d
 	git reset --hard
 	git clean -fd
-	docker volume rm vpnbot_adguard vpnbot_warp
+	@# the working state, except the bot token and the admins (data/config.php)
+	find ./data -mindepth 1 -maxdepth 1 ! -name config.php -exec rm -rf {} +
+	docker compose down -v --remove-orphans
 	make u
 backup:
 	docker compose exec php php backup.php > backup.json

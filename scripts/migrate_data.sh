@@ -26,7 +26,6 @@ config/ocserv.conf:ocserv/ocserv.conf
 config/ocserv.passwd:ocserv/ocserv.passwd
 config/upstream.conf:up/upstream.conf
 config/deny:up/deny
-config/nginx.conf:ng/nginx.conf
 config/dnstt/server.key:dnstt/server.key
 config/dnstt/server.pub:dnstt/server.pub
 app/webapp/override.html:www/override.html"
