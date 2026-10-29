@@ -8,9 +8,22 @@ ARG ocserv_version=1.6.0
 ARG ocserv_sha512=512d882b025d157023d0d658a19fbc5f9ecbee9949cd43f3e785e694c97c8c21200a396a64b8990bd9d332e713bfd85e4b2935969755280864b5bc73520f740c
 # security updates of the base image's packages (ca-certificates, openssl, ...)
 # on every build, not only what the base image was pulled with
+# The headers (-dev) are for the build only: the image keeps the libraries
+# ocserv and occtl are linked against (found by scanelf; its list is split
+# into package names on purpose).
+# hadolint ignore=SC2046
 RUN apk upgrade --no-cache \
     && apk add --no-cache openssh \
     iptables \
+    && apk add --no-cache --virtual .build-deps \
+    build-base \
+    linux-headers \
+    meson \
+    gperf \
+    protobuf-c-compiler \
+    xz \
+    libtasn1-progs \
+    pax-utils \
     gnutls-dev \
     libev-dev \
     linux-pam-dev \
@@ -22,14 +35,6 @@ RUN apk upgrade --no-cache \
     talloc-dev \
     protobuf-c-dev \
     llhttp-dev \
-    && apk add --no-cache --virtual .build-deps \
-    build-base \
-    linux-headers \
-    meson \
-    gperf \
-    protobuf-c-compiler \
-    xz \
-    libtasn1-progs \
     && cd /tmp \
     && wget https://www.infradead.org/ocserv/download/ocserv-${ocserv_version}.tar.xz \
     && echo "${ocserv_sha512}  ocserv-${ocserv_version}.tar.xz" | sha512sum -c - \
@@ -40,5 +45,7 @@ RUN apk upgrade --no-cache \
     && ninja -C build install \
     && cd / \
     && rm -rf /tmp/ocserv-* \
+    && apk add --no-cache --virtual .ocserv-run $(scanelf --needed --nobanner --format '%n#p' /usr/sbin/ocserv* /usr/bin/occtl /usr/bin/ocpasswd \
+        | tr ',' '\n' | sort -u | sed 's/^/so:/') \
     && apk del .build-deps \
     && mkdir /root/.ssh

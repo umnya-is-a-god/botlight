@@ -19,23 +19,18 @@ RUN apk upgrade --no-cache \
     php83-fpm \
     php83-mbstring \
     php83-session \
-    php83-phar \
-    php83-zip \
     php83-curl \
     php83-opcache \
     php83-openssl \
-    php83-iconv \
     php83-intl \
     php83-pecl-ssh2 \
     php83-pecl-yaml \
     php83-sodium \
-    xxd \
     certbot \
     logrotate \
     libqrencode-tools \
     openssh \
     openssl \
-    curl \
     git \
     && ln -sf /usr/bin/php83 /usr/bin/php \
     && mkdir /root/.ssh \

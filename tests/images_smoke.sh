@@ -60,6 +60,8 @@ case "$kind" in
     oc)
         check 'ocserv accepts the template, workers isolated' \
             'mkdir -p /etc/ocserv && cp /c/ocserv.passwd /etc/ocserv/ && sed "s/^isolate-workers.*/isolate-workers = true/" /c/ocserv.conf > /tmp/oc.conf && ocserv -t -c /tmp/oc.conf'
+        # the bot reads the sessions with occtl (Bot::ocTraffic)
+        check 'occtl runs' 'occtl --version'
         ;;
     wg)
         check 'wgcf, WireGuard, microsocks' 'wgcf --help > /dev/null && command -v wg-quick && wg --version && command -v microsocks'
