@@ -65,22 +65,52 @@ trait BotTelegram
         }
     }
 
+    /**
+     * A Bot API call. One curl handle serves them all: the connection stays
+     * open and the address is looked up about once a minute (curl's DNS
+     * cache), not for every request. A request that did not reach Telegram
+     * (no address, no connection) is sent once more; one that may have
+     * reached it only if sending it twice changes nothing.
+     */
     public function request($method, $data, $json_header = 0)
     {
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $this->api . $method,
-            CURLOPT_CUSTOMREQUEST  => 'POST',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_HTTPHEADER => $json_header ? [
-                'Content-Type: application/json'
-            ] : [],
-            CURLOPT_POSTFIELDS     => $data,
-        ]);
-        $res = curl_exec($ch);
-        $r   = json_decode($res, true);
+        $this->tg ??= curl_init();
+        $ch = $this->tg;
+        $repeatable = in_array($method, ['getUpdates', 'editMessageText', 'answerCallbackQuery', 'deleteMessage', 'sendMessageDraft', 'getFile', 'getMyName', 'setMyCommands', 'deleteWebhook'], true);
+        for ($try = 1; $try <= 2; $try++) {
+            // the options of the previous request go, the connection and the cached address stay
+            curl_reset($ch);
+            curl_setopt_array($ch, [
+                CURLOPT_URL               => $this->api . $method,
+                CURLOPT_CUSTOMREQUEST     => 'POST',
+                CURLOPT_RETURNTRANSFER    => true,
+                CURLOPT_CONNECTTIMEOUT    => 5,
+                CURLOPT_TIMEOUT           => 15,
+                // the containers have no IPv6: no waiting for its answer
+                CURLOPT_IPRESOLVE         => CURL_IPRESOLVE_V4,
+                CURLOPT_DNS_CACHE_TIMEOUT => 60,
+                CURLOPT_HTTPHEADER        => $json_header ? [
+                    'Content-Type: application/json'
+                ] : [],
+                CURLOPT_POSTFIELDS        => $data,
+            ]);
+            $res  = curl_exec($ch);
+            $info = curl_getinfo($ch);
+            if (is_array($this->timing)) {
+                $this->timing[] = [
+                    'm'   => $method,
+                    'ms'  => (int) round($info['total_time'] * 1000),
+                    'dns' => (int) round($info['namelookup_time'] * 1000),
+                    'tcp' => (int) round($info['connect_time'] * 1000),
+                ] + ($res === false ? ['err' => curl_error($ch)] : []);
+            }
+            // nothing sent yet (no address, no connection): safe to send again
+            $unsent = $res === false && (float) $info['pretransfer_time'] == 0.0;
+            if ($res !== false || $try == 2 || !($unsent || $repeatable)) {
+                break;
+            }
+        }
+        $r   = json_decode((string) $res, true);
         // log failed calls: no answer at all, or Telegram refused the request
         if (!is_array($r) || empty($r['ok'])) {
             // method and Telegram's answer only: the request itself may carry
@@ -118,6 +148,7 @@ trait BotTelegram
         ]);
         // the loop is alive: healthcheck and scripts/supervise.sh read it
         @touch('/tmp/heartbeat');
+        $debug = $this->debugOn();
         $this->deleteDue();
         $this->menuAfterHost();
         if (empty($this->time_warp_profile) || time() - $this->time_warp_profile > 600) {
@@ -131,6 +162,10 @@ trait BotTelegram
         }
         if (!empty($r['result'])) {
             foreach ($r['result'] as $v) {
+                // with /debug on: how long the update took and each Telegram
+                // request in it (the command only, not its data)
+                $this->timing = $debug ? [] : null;
+                $start        = microtime(true);
                 try {
                     $this->input($v);
                 } catch (Throwable $e) {
@@ -138,10 +173,17 @@ trait BotTelegram
                 } finally {
                     session_write_close();
                 }
+                if ($debug) {
+                    $what = isset($v['callback_query']) ? 'button ' . strtok((string) ($v['callback_query']['data'] ?? ''), ' ') : 'message';
+                    error_log('timing: ' . json_encode(['update' => $what, 'ms' => (int) round((microtime(true) - $start) * 1000), 'requests' => $this->timing], JSON_UNESCAPED_SLASHES));
+                }
+                $this->timing = null;
                 $offset = max($offset, $v['update_id']);
             }
             $offset++;
-        } else {
+        } elseif (!is_array($r)) {
+            // no answer from Telegram: not again at once; an empty answer
+            // (no update within the timeout) is asked again at once
             sleep(1);
         }
         return $offset;

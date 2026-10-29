@@ -79,6 +79,10 @@ class Bot
     public $adguardChanged = false;
     // messages to delete later: [chat, message id, time]
     public $later = [];
+    // one connection to Telegram for all requests (BotTelegram::request)
+    public $tg;
+    // with /debug on: the Telegram requests of the update being handled
+    public $timing;
     public $time_warp_profile;
     public $time_logrotate;
     // when the IP limit last alerted about a user
