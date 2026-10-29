@@ -262,7 +262,7 @@ class Bot
                 $this->switchBanIp();
                 break;
             case preg_match('~^/switchMonthlyStats( oc)?$~', $this->input['callback'], $m):
-                $this->switchMonthlyStats(!empty($m[1]));
+                $this->switchMonthlyStats();
                 break;
             case preg_match('~^/setIpLimit$~', $this->input['callback'], $m):
                 $this->setIpLimit();

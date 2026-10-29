@@ -523,18 +523,27 @@ trait BotMenu
                 'callback_data' => "/autoupdate",
             ],
         ];
-        // cover page at the site root ("fake html")
+        // cover page at the site root ("fake html"); the monthly reset of
+        // the Xray and OpenConnect traffic
         $fake   = is_file(BOT_DATA . '/www/override.html');
-        $data[] = array_values(array_filter([
+        $data[] = [
             [
                 'text'          => $this->i18n('fake html') . ': ' . $this->i18n($fake ? 'on' : 'off'),
                 'callback_data' => '/addOverrideHtml',
             ],
-            $fake ? [
-                'text'          => $this->i18n('delete') . ' ' . $this->i18n('fake html'),
-                'callback_data' => '/delOverrideHtml',
-            ] : null,
-        ]));
+            [
+                'text'          => $this->i18n('auto reset stats') . ': ' . $this->i18n(!empty($conf['reset_monthly']) ? 'on' : 'off'),
+                'callback_data' => '/switchMonthlyStats',
+            ],
+        ];
+        if ($fake) {
+            $data[] = [
+                [
+                    'text'          => $this->i18n('delete') . ' ' . $this->i18n('fake html'),
+                    'callback_data' => '/delOverrideHtml',
+                ],
+            ];
+        }
         $data[] = [
             [
                 'text'          => $this->i18n('manage updates'),

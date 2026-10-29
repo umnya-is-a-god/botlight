@@ -479,8 +479,8 @@ trait BotXray
         $this->restartXray($xr);
     }
 
-    // the monthly reset of Xray and OpenConnect traffic; $oc: from the OpenConnect menu
-    public function switchMonthlyStats($oc = false)
+    // the monthly reset of Xray and OpenConnect traffic (Settings menu)
+    public function switchMonthlyStats()
     {
         $c = $this->getPacConf();
         $c['reset_monthly'] = !empty($c['reset_monthly']) ? 0 : 1;
@@ -493,7 +493,7 @@ trait BotXray
             });
         }
         $this->setPacConf($c);
-        return $oc ? $this->menu('oc') : $this->xray();
+        $this->menu('config');
     }
 
     public function switchIpLimit($limit)
@@ -839,10 +839,6 @@ trait BotXray
             [
                 'text'          => $this->i18n('reset stats'),
                 'callback_data' => '/resetXrStats',
-            ],
-            [
-                'text'          => $this->i18n('reset monthly') . ": " . $this->i18n(!empty($this->getPacConf()['reset_monthly']) ? 'on' : 'off'),
-                'callback_data' => '/switchMonthlyStats',
             ],
         ];
         $data[] = [
@@ -1202,6 +1198,12 @@ trait BotXray
         }
         $data[] = [
             [
+                'text'          => $this->i18n('new subscription link'),
+                'callback_data' => "/newSubXr $uid",
+            ],
+        ];
+        $data[] = [
+            [
                 'text'          => $this->i18n('rename'),
                 'callback_data' => "/renameXrUser $uid",
             ],
@@ -1213,12 +1215,6 @@ trait BotXray
             [
                 'text'          => $this->i18n('delete'),
                 'callback_data' => "/delxr $uid",
-            ],
-        ];
-        $data[] = [
-            [
-                'text'          => $this->i18n('new subscription link'),
-                'callback_data' => "/newSubXr $uid",
             ],
         ];
         $data[] = [

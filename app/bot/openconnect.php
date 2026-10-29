@@ -144,11 +144,6 @@ trait BotOpenconnect
                 'text'          => $this->i18n('reset stats'),
                 'callback_data' => '/resetOcStats',
             ],
-            [
-                // one switch with Xray (checkResetXrayStats)
-                'text'          => $this->i18n('reset monthly') . ': ' . $this->i18n(!empty($pac['reset_monthly']) ? 'on' : 'off'),
-                'callback_data' => '/switchMonthlyStats oc',
-            ],
         ];
         $data[] = [
             [
@@ -172,10 +167,13 @@ trait BotOpenconnect
             $this->secretsButton('ocserv'),
         ];
         $clients = $this->getClientsOc();
+        $st      = $this->ocTrafficState();
         foreach ($clients as $k => $v) {
+            // the traffic next to the name, as in the Xray list
+            [$down, $up] = array_map([$this, 'getBytes'], $this->ocUserTraffic($v, $st));
             $data[] = [
                 [
-                    'text'          => $v,
+                    'text'          => "$v (↓$down  ↑$up)",
                     'callback_data' => '/ocUser ' . $this->shortId($v),
                 ],
                 [
@@ -230,9 +228,9 @@ trait BotOpenconnect
     }
 
     // [download, upload] of a user, or of all with null; open sessions included
-    public function ocUserTraffic(?string $name): array
+    public function ocUserTraffic(?string $name, ?array $s = null): array
     {
-        $s    = $this->ocTrafficState();
+        $s  ??= $this->ocTrafficState();
         $down = $up = 0;
         foreach ($s['users'] as $u => $t) {
             if ($name === null || (string) $u === $name) {

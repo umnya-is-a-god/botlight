@@ -261,6 +261,10 @@ $i = [
         'en' => 'reset stats',
         'ru' => 'сбросить трафик',
     ],
+    'auto reset stats'  => [
+        'en' => 'auto reset stats',
+        'ru' => 'автосброс статистики',
+    ],
     'reset monthly'  => [
         'en' => 'reset monthly',
         'ru' => 'сброс ежемесячно',
