@@ -15,12 +15,6 @@ parameters:
 			path: app/bot.php
 
 		-
-			message: '#^Method Bot\:\:templateCopy\(\) invoked with 2 parameters, 1 required\.$#'
-			identifier: arguments.count
-			count: 1
-			path: app/bot.php
-
-		-
 			message: '#^Variable \$ban might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -52,12 +46,6 @@ parameters:
 
 		-
 			message: '#^Variable \$ips might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/bot.php
-
-		-
-			message: '#^Variable \$output might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
 			path: app/bot.php

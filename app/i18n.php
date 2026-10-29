@@ -197,25 +197,9 @@ $i = [
         'en' => 'third party browser',
         'ru' => 'сторонний браузер',
     ],
-    'browser_notify_on'  => [
-        'en' => 'the web panel can be opened in any browser',
-        'ru' => 'веб панель может быть открыта в любом браузере',
-    ],
-    'browser_notify_off'  => [
-        'en' => 'web panel is only available from telegram',
-        'ru' => 'веб панель доступна только из телеграмма',
-    ],
     'fake html'  => [
         'en' => 'fake html',
         'ru' => 'фейк заглушка',
-    ],
-    'fill allowed clients'  => [
-        'en' => 'fill allowed clients',
-        'ru' => 'заполнить белый список клиентов',
-    ],
-    'delete allowed clients'  => [
-        'en' => 'delete allowed clients',
-        'ru' => 'очистить белый список клиентов',
     ],
     'success'  => [
         'en' => 'success',
@@ -245,10 +229,6 @@ $i = [
         'en' => 'update images',
         'ru' => 'обновить образы',
     ],
-    'rebuild images'  => [
-        'en' => 'rebuild images',
-        'ru' => 'пересобрать образы',
-    ],
     'yes'  => [
         'en' => 'yes',
         'ru' => 'да',
@@ -268,10 +248,6 @@ $i = [
     'auto reset stats'  => [
         'en' => 'auto reset stats',
         'ru' => 'автосброс статистики',
-    ],
-    'reset monthly'  => [
-        'en' => 'reset monthly',
-        'ru' => 'сброс ежемесячно',
     ],
     'ip limit'  => [
         'en' => 'ip limit',
@@ -365,10 +341,6 @@ $i = [
         'en' => 'clean all',
         'ru' => 'очистить всё',
     ],
-    'autoclean'  => [
-        'en' => 'autoclean',
-        'ru' => 'автоочистка',
-    ],
     'telegram IPs'  => [
         'en' => 'telegram IPs',
         'ru' => 'IP Telegram',
@@ -440,10 +412,6 @@ $i = [
     'enter key'  => [
         'en' => 'enter key',
         'ru' => 'введите ключ',
-    ],
-    'enter id'  => [
-        'en' => 'enter id',
-        'ru' => 'введите id',
     ],
     'enter seconds and count ip'  => [
         'en' => 'enter seconds and count ip',

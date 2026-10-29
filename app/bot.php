@@ -550,10 +550,10 @@ class Bot
                 $this->xtlsrulesset(($m[1] ?? null) ?: 0);
                 break;
             case preg_match('~^/templateCopy (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
-                $this->templateCopy($m[1], $m[2]);
+                $this->templateCopy($m[1]);
                 break;
             case preg_match('~^/delTemplate (sing|clash)(?: (.+))?$~', $this->input['callback'], $m):
-                $this->delTemplate($m[1], $m[2]);
+                $this->delTemplate($m[1], $m[2] ?? '');
                 break;
             case preg_match('~^/downloadOrigin (sing|clash)$~', $this->input['callback'], $m):
                 $this->downloadOrigin($m[1]);
