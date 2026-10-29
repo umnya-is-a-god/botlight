@@ -1,0 +1,88 @@
+# The bot's images, built here instead of on the server and published to
+# GitHub's registry (ghcr.io/<owner>/botlight-<image>:<branch>): weekly for
+# fresh base images and programs (Alpine, AdGuard Home, Xray, Go), and when
+# a Dockerfile changes. An image is published only after its checks pass
+# (tests/images_smoke.sh). The server takes them when its admin presses
+# "update images" (scripts/images.sh), and builds them itself if it cannot.
+name: images
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - dockerfile/**
+      - tests/images_smoke.sh
+      - .github/workflows/images.yml
+  schedule:
+    # Mondays, 02:23 UTC; GitHub runs schedules from the default branch only
+    - cron: '23 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ng, php, ad, xr, oc, wg, dnstt]
+        # a push: its branch; the weekly run: both
+        branch: ${{ fromJSON(github.event_name == 'push' && format('["{0}"]', github.ref_name) || '["main", "dev"]') }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.branch }}
+      - name: build
+        run: |
+          case "${{ matrix.image }}" in
+              ng)    file=dockerfile/nginx.dockerfile;     ctx=dockerfile ;;
+              php)   file=dockerfile/php.dockerfile;       ctx=. ;;
+              ad)    file=dockerfile/adguard.dockerfile;   ctx=. ;;
+              xr)    file=dockerfile/xray.dockerfile;      ctx=. ;;
+              oc)    file=dockerfile/ocserv.dockerfile;    ctx=. ;;
+              wg)    file=dockerfile/wireguard.dockerfile; ctx=. ;;
+              dnstt) file=dockerfile/dnstt.dockerfile;     ctx=. ;;
+          esac
+          base=$(sed -n 's/^IMAGE=//p' .env | tr -d '\r')
+          args=(--build-arg "image=$base")
+          if [ "${{ matrix.image }}" = xr ]; then
+              args+=(--build-arg "xray_version=$(sh scripts/xray_version.sh)")
+          fi
+          docker build --pull -f "$file" "${args[@]}" \
+              --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+              -t "botlight-test-${{ matrix.image }}" "$ctx"
+      - name: check
+        run: bash tests/images_smoke.sh "${{ matrix.image }}" "botlight-test-${{ matrix.image }}"
+      - name: publish
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          name="ghcr.io/$owner/botlight-${{ matrix.image }}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in "${{ matrix.branch }}" "${{ matrix.branch }}-$(date -u +%Y%m%d)"; do
+              docker tag "botlight-test-${{ matrix.image }}" "$name:$tag"
+              docker push -q "$name:$tag"
+          done
+
+  # the registry keeps the last versions of each image, older ones go
+  cleanup:
+    needs: build
+    if: always()
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ng, php, ad, xr, oc, wg, dnstt]
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: botlight-${{ matrix.image }}
+          package-type: container
+          min-versions-to-keep: 16
