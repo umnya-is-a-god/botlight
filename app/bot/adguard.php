@@ -32,20 +32,35 @@ trait BotAdguard
         if ($pass === '') {
             $this->setSecret('adpswd', $pass = bin2hex(random_bytes(8)));
         }
-        $ssl = $this->nginxGetTypeCert();
-        $c   = $this->getAdguard();
-        $this->stopAd();
+        $ssl  = $this->nginxGetTypeCert();
+        $orig = $this->getAdguard();
+        $c    = $orig;
+        // the hash stays while the password is the same: a new salt would
+        // change the config, and AdGuard would restart for nothing
+        $hash = function (string $name, string $password, $algo, array $opt = []) use ($orig) {
+            foreach ($orig['users'] ?? [] as $u) {
+                if (($u['name'] ?? '') === $name && is_string($u['password'] ?? null) && password_verify($password, $u['password'])) {
+                    return $u['password'];
+                }
+            }
+            return password_hash($password, $algo, $opt);
+        };
         $c['users'] = [
-            ['name' => 'admin', 'password' => password_hash($pass, PASSWORD_DEFAULT)],
+            ['name' => 'admin', 'password' => $hash('admin', $pass, PASSWORD_DEFAULT)],
             // nginx's login (writeAdguardInclude): a long random password, so
             // a fast hash is enough; AdGuard checks it on every request
-            ['name' => 'bot', 'password' => password_hash($this->adguardProxyPassword(), PASSWORD_BCRYPT, ['cost' => 4])],
+            ['name' => 'bot', 'password' => $hash('bot', $this->adguardProxyPassword(), PASSWORD_BCRYPT, ['cost' => 4])],
         ];
         $c = $this->adguardClientsConf($c);
         if (!empty($ssl) && !empty($pac['domain']) && empty($c['tls']['enabled'])) {
             $c['tls']['enabled']     = true;
             $c['tls']['server_name'] = $pac['domain'];
         }
+        if ($c === $orig) {
+            // nothing to change: AdGuard keeps running
+            return;
+        }
+        $this->stopAd();
         $this->saveAdguard($c);
         $this->startAd();
     }
@@ -328,18 +343,26 @@ trait BotAdguard
     }
 
     /**
-     * AdGuard in the background. After a config change it must come up
-     * within a few seconds, else the previous config goes back.
+     * AdGuard in the background. After a config change it gets 30 seconds
+     * to answer; if its process has ended by then, the previous config
+     * goes back.
      */
     public function startAd()
     {
         $out = $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
         if ($this->adguardChanged) {
             $this->adguardChanged = false;
-            for ($i = 0; $i < 20 && !$this->adguardUp(); $i++) {
+            // a slow start (first start, a small server) is not a failure
+            $until = time() + 30;
+            while (!$this->adguardUp() && time() < $until) {
                 usleep(500000);
             }
-            if (!$this->adguardUp() && $this->rollbackConfig($this->adguard)) {
+            // back to the previous config only when AdGuard is known to have
+            // stopped: the container answers and the process is gone. Not
+            // reachable (starting too) or still starting: nothing is undone.
+            $gone = !$this->adguardUp()
+                && $this->sshRun('p=$(cat /opt/adguardhome/pid 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null', 'ad')['rc'] === 1;
+            if ($gone && $this->rollbackConfig($this->adguard)) {
                 $this->stopAd();
                 $this->ssh('/opt/adguardhome/AdGuardHome --no-check-update --pidfile /opt/adguardhome/pid -c /config/AdGuardHome.yaml -h 0.0.0.0 -w /opt/adguardhome/work', 'ad', false);
                 $this->configRejected('AdGuardHome.yaml', 'AdGuard did not start with the new config, the previous one is back');
