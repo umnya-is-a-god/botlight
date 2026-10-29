@@ -20,8 +20,8 @@ volumes:
 
 services:
     up:
-        image: botlight/vpnbot-ng:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-ng:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -77,8 +77,8 @@ services:
                 ipv4_address: 10.10.0.10
         logging: *default-logging
     ng:
-        image: botlight/vpnbot-ng:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-ng:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -147,8 +147,8 @@ services:
             timeout: 5s
             retries: 3
     php:
-        image: botlight/vpnbot-php:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-php:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default: php-fpm starts its pools as other users, the
@@ -217,8 +217,8 @@ services:
             timeout: 5s
             retries: 5
     service:
-        image: botlight/vpnbot-php:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-php:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -292,8 +292,8 @@ services:
             - oc
             - dnstt
     ad:
-        image: botlight/vpnbot-ad:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-ad:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -347,8 +347,8 @@ services:
         entrypoint: ["/bin/sh", "/scripts/start_ad.sh"]
         logging: *default-logging
     xr:
-        image: botlight/vpnbot-xr:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-xr:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -401,8 +401,8 @@ services:
                 ipv4_address: 10.10.1.9
         logging: *default-logging
     oc:
-        image: botlight/vpnbot-oc:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-oc:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -461,8 +461,8 @@ services:
                 ipv4_address: 10.10.0.11
         logging: *default-logging
     wp:
-        image: botlight/vpnbot-wg:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-wg:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs
@@ -516,8 +516,8 @@ services:
                 ipv4_address: 10.10.0.13
         logging: *default-logging
     dnstt:
-        image: botlight/vpnbot-dnstt:local
-        pull_policy: build
+        # built on GitHub (scripts/images.sh), or here from the build section below
+        image: ${IMAGES:-ghcr.io/umnya-is-a-god/botlight}-dnstt:${IMAGE_TAG:-main}
         security_opt:
             - no-new-privileges:true
         # nothing by default, only what the container needs

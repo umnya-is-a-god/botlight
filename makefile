@@ -2,6 +2,8 @@
 export
 
 IP := $(or $(IP),$(shell hostname -I | awk '{print $$1}'))
+# the images' tag: the branch (scripts/images.sh), as docker-compose.yml names them
+IMAGE_TAG := $(or $(IMAGE_TAG),$(shell bash ./scripts/images.sh tag))
 # compose files listed in COMPOSE_FILE (.env) must exist for every docker compose call
 _ := $(shell touch ./docker-compose.override.yml ./docker-compose.ports.yml)
 
@@ -14,10 +16,14 @@ start: # запуск контейнеров
 	@# the working state into ./data (once; nothing is overwritten)
 	sh ./scripts/migrate_data.sh
 	sh ./scripts/ports.sh
-	IP=$(IP) VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate
-	@# drop superseded builds of the bot's own images only (quiet)
-	-@docker image prune -f --filter label=org.botlight.project=vpnbot > /dev/null
+	@# the images as they are; a missing one from GitHub's registry, or built here
+	VER=$(shell cat VERSION) bash ./scripts/images.sh ensure
+	IP=$(IP) VER=$(shell cat VERSION) docker compose --env-file ./.env --env-file ./override.env up -d --force-recreate --no-build --pull never
+	@# images no longer used: the bot's own only (quiet)
+	-@bash ./scripts/images.sh prune
 u: preup start
+images: # новые образы из GitHub (без них — сборка здесь); потом make r. Кнопка бота делает то же с проверкой
+	VER=$(shell cat VERSION) bash ./scripts/images.sh update
 rebuild: # пересборка образов заново, по одному: свежие базовые образы и пакеты (S=сервис — только его)
 	for s in $(or $(S),ng php ad xr oc wp dnstt); do \
 		VER=$(shell cat VERSION) XRAY_VERSION=$$(sh ./scripts/xray_version.sh) docker compose --env-file ./.env --env-file ./override.env build --pull --no-cache $$s || exit 1; \

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs on the host (make preup), one copy at a time. The bot (in a
-# container) asks for an update (1), restart (2) or image rebuild (3)
+# container) asks for an update (1), restart (2) or new images (3)
 # through ./update/pipe; whatever the containers write into ./update is
 # checked before use. The working state lives in ./data, outside git: an
 # update only moves the code forward (fast-forward), it never resets or
@@ -23,6 +23,21 @@ done
 # pid lives outside ./update: that folder is writable from the containers
 echo "$$" > "$pwd/.update_pid"
 last_fetch=0
+last_images=0
+
+# the containers after a change of images: all running, none unhealthy,
+# within 5 minutes; else prints the ones that are not
+healthy() {
+    local i bad=""
+    for i in $(seq 1 60); do
+        bad=$(docker compose ps -a --format '{{.Service}} {{.State}} {{.Health}}' 2> /dev/null \
+            | awk '$2 != "running" || $3 == "unhealthy" || $3 == "starting"')
+        [ -z "$bad" ] && return 0
+        [ "$i" -lt 60 ] && sleep 5
+    done
+    printf '%s\n' "$bad"
+    return 1
+}
 
 # The bot token goes to curl in a config file (mode 600), not on the
 # command line, where every process on the host could read it.
@@ -146,6 +161,13 @@ do
         last_fetch=$now
         git -C "$pwd" fetch -q --tags origin >/dev/null 2>&1 &
     fi
+    # daily: which images GitHub's registry has newer versions of; the bot
+    # reads ./update/images and tells the admin (nothing is downloaded)
+    if (( now - last_images >= 86400 )); then
+        last_images=$now
+        ( bash "$pwd/scripts/images.sh" check > "$pwd/update/images.tmp" 2> /dev/null \
+            && mv "$pwd/update/images.tmp" "$pwd/update/images" ) &
+    fi
     cmd=$(tr -d '\r\n' 2>/dev/null < "$pwd/update/pipe")
     # the bot writes 1 (update), 2 (restart) or 3 (images); anything else
     # is dropped before the containers are touched
@@ -194,10 +216,29 @@ do
             fi
         fi
 
+        report=""
+        if [[ "$cmd" == "3" ]]
+        then
+            # new images downloaded while everything still runs; the
+            # current ones are kept as <tag>-prev
+            tg_draft "downloading the images"
+            images=$(bash "$pwd/scripts/images.sh" update 2>&1)
+            report="\n\nimages: $images"
+            if [[ "$images" == "new: none" ]]
+            then
+                # nothing new: no restart
+                : > "$pwd/update/images"
+                tg sendMessage "{\"chat_id\":$_chat_id,\"text\":$(json_str "the images are up to date, nothing was restarted")}"
+                : > "$pwd/update/key"
+                : > "$pwd/update/curl"
+                _key=""
+                continue
+            fi
+        fi
+
         tg_draft "stopping the bot"
         docker compose down --remove-orphans
 
-        report=""
         if [[ "$cmd" == "1" ]]
         then
             if result=$(apply_update "$ref" 2>&1); then
@@ -208,32 +249,20 @@ do
             printf '%s\n' "$result" > ./update/message
         fi
 
-        if [[ "$cmd" == "3" ]]
-        then
-            # every image built anew, one at a time (low memory, the
-            # containers are stopped): fresh base images and packages. A
-            # failed build keeps the image it had. The log is kept outside
-            # ./update, which the containers can write to.
-            : > "$pwd/.rebuild.log"
-            services=(ng php ad xr oc wp dnstt)
-            i=0
-            for s in "${services[@]}"; do
-                i=$((i + 1))
-                tg_draft "building $s ($i/${#services[@]})"
-                if make -s rebuild S="$s" >> "$pwd/.rebuild.log" 2>&1; then
-                    report="$report\n$s ok"
-                else
-                    report="$report\n$s FAILED"
-                fi
-            done
-            report="\n\nimages:$report"
-            case "$report" in
-                *FAILED*) report="$report\nlog: .rebuild.log in the bot folder" ;;
-            esac
-        fi
-
         tg_draft "launching the bot"
         make start
+
+        if [[ "$cmd" == "3" ]]
+        then
+            tg_draft "checking the containers"
+            if ! bad=$(healthy); then
+                # the new images do not run here: the previous ones back
+                bash "$pwd/scripts/images.sh" rollback
+                make start
+                report="$report\nnot healthy with the new images:\n$bad\nthe previous images are back"
+            fi
+            bash "$pwd/scripts/images.sh" prune
+        fi
 
         : > "$pwd/update/key"
         : > "$pwd/update/curl"
