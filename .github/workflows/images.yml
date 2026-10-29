@@ -39,7 +39,7 @@ jobs:
         # a push: its branch; the weekly run: both
         branch: ${{ fromJSON(github.event_name == 'push' && format('["{0}"]', github.ref_name) || '["main", "dev"]') }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ matrix.branch }}
       - name: build

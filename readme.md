@@ -130,7 +130,7 @@ Xray, sing-box, wgcf и dnslookup берутся из релизов на GitHub
 ### Обновляются вручную
 | Что | Где версия | Где смотреть новые |
 |---|---|---|
-| GitHub Actions: `actions/checkout`, `actions/delete-package-versions` | `.github/workflows/*.yml`, `@v5` | страница Releases проекта на GitHub |
+| GitHub Actions: `actions/checkout`, `actions/delete-package-versions` | `.github/workflows/*.yml`, `@v7`, `@v5` | страница Releases проекта на GitHub |
 | PHPStan, hadolint (проверки в CI) | `.github/workflows/checks.yml`: версия в адресе и SHA-256 | Releases на GitHub |
 | ocserv | `dockerfile/ocserv.dockerfile`: `ocserv_version`, `ocserv_sha512` | https://www.infradead.org/ocserv/download/ |
 | dnstt | `dockerfile/dnstt.dockerfile`: `dnstt_version` | https://www.bamsoftware.com/git/dnstt.git (теги `v1.ГГГГММДД.0`) |

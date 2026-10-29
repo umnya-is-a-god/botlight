@@ -14,28 +14,28 @@ jobs:
   php:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: php -l
         run: |
           php --version
           for f in app/*.php app/bot/*.php tests/*.php; do php -l "$f" > /dev/null || exit 1; done
       - name: PHPStan
         run: |
-          curl -sSfLo phpstan.phar https://github.com/phpstan/phpstan/releases/download/2.3.2/phpstan.phar
-          echo "0ded687c44b1f9d0346f7f00fa505212b018efe532b2b18e3a72f6e16feb32be  phpstan.phar" | sha256sum -c -
+          curl -sSfLo phpstan.phar https://github.com/phpstan/phpstan/releases/download/2.3.4/phpstan.phar
+          echo "a961d12cc71941a31ad6560e6a330347d487612628c3202a718f71a59de21a7c  phpstan.phar" | sha256sum -c -
           php -d memory_limit=2G phpstan.phar analyse --no-progress
 
   shell:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck scripts/*.sh tests/*.sh
 
   tests:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: config templates parse
         run: |
           for f in config/*.json; do
@@ -60,7 +60,7 @@ jobs:
   docker:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: hadolint
         run: |
           curl -sSfLo hadolint https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64
