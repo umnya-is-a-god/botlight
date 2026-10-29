@@ -8,16 +8,18 @@
 # tag:TAG        exactly that release, whatever its age
 # ASSET is the file name: {tag} stands for the tag, {v} for it without the
 # leading v. Prints the tag. Needs curl and jq. A GitHub token in
-# /run/secrets/github_token (a build secret, never kept in the image)
-# raises the API's rate limit.
+# /run/secrets/github_token (a build secret, never kept in the image) or
+# in GITHUB_TOKEN raises the API's rate limit.
 set -eu
 repo=$1 pick=$2 asset=$3 out=$4
 min_age_days=3
 
+token=${GITHUB_TOKEN:-}
+[ -s /run/secrets/github_token ] && token=$(cat /run/secrets/github_token)
 set -- curl -fsSL -m 60 --retry 2
 api() {
-    if [ -s /run/secrets/github_token ]; then
-        "$@" -H "Authorization: Bearer $(cat /run/secrets/github_token)" -H 'Accept: application/vnd.github+json' "$url"
+    if [ -n "$token" ]; then
+        "$@" -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' "$url"
     else
         "$@" -H 'Accept: application/vnd.github+json' "$url"
     fi

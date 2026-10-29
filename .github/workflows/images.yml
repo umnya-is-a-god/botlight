@@ -4,7 +4,8 @@
 # a Dockerfile changes. The programs from GitHub releases (Xray, sing-box,
 # wgcf, dnslookup) are the newest at least 3 days old (scripts/release.sh).
 # An image is published only after its checks pass
-# (tests/images_smoke.sh). The server takes them when its admin presses
+# (tests/images_smoke.sh) and Trivy finds no known vulnerability with a
+# fix out in its Alpine packages. The server takes them when its admin presses
 # "update images" (scripts/images.sh), and builds them itself if it cannot.
 name: images
 
@@ -66,6 +67,49 @@ jobs:
               -t "botlight-test-${{ matrix.image }}" "$ctx"
       - name: check
         run: bash tests/images_smoke.sh "${{ matrix.image }}" "botlight-test-${{ matrix.image }}"
+      # Known vulnerabilities (Trivy, the newest release at least 3 days
+      # old), Critical and High with a fix out. In the Alpine packages they
+      # stop the image: apk upgrade should have installed the fix. In the
+      # programs (Xray, AdGuard Home, sing-box ..., built with Go) they are
+      # reported only: their authors fix them, and the new releases come in
+      # by themselves. The report: the run's Summary. A scanner that cannot
+      # run is a warning, not a stop.
+      - name: scan
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          image="botlight-test-${{ matrix.image }}"
+          # the token for GitHub's API (scripts/release.sh) only, not for Trivy
+          if ! GITHUB_TOKEN="$TOKEN" sh scripts/release.sh aquasecurity/trivy latest:v 'trivy_{v}_Linux-64bit.tar.gz' /tmp/trivy.tgz \
+              || ! tar -xzf /tmp/trivy.tgz -C /tmp trivy; then
+              echo "::warning::${{ matrix.image }}: Trivy could not be downloaded, the image is not scanned"
+              exit 0
+          fi
+          scan() { /tmp/trivy image --quiet --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed "$@" "$image"; }
+          set +e
+          scan --pkg-types os --exit-code 3 > /tmp/os.txt 2>&1
+          os=$?
+          scan --pkg-types library > /tmp/programs.txt 2>&1
+          programs=$?
+          set -e
+          {
+              echo "### ${{ matrix.image }} (${{ matrix.branch }})"
+              echo "Alpine packages (a vulnerability stops the image):"
+              echo '```'
+              cat /tmp/os.txt
+              echo '```'
+              echo "Programs (reported only):"
+              echo '```'
+              cat /tmp/programs.txt
+              echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$os" -eq 3 ]; then
+              echo "::error::${{ matrix.image }}: known vulnerabilities with a fix in the Alpine packages, not published (see the Summary)"
+              exit 1
+          fi
+          if [ "$os" -ne 0 ] || [ "$programs" -ne 0 ]; then
+              echo "::warning::${{ matrix.image }}: Trivy failed, see the Summary"
+          fi
       - name: publish
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
